@@ -16,7 +16,6 @@ const UI = {
         placeholder: "Talk to Serenova...",
         send: "Send",
         logout: "Logout",
-        langLabel: "ID",
         opening: "Hey. What's been sitting in your mind lately?",
         error: "Something felt interrupted just now.",
         fallback: "I'm here with you.",
@@ -28,7 +27,6 @@ const UI = {
         placeholder: "Cerita ke Serenova...",
         send: "Kirim",
         logout: "Keluar",
-        langLabel: "EN",
         opening: "hei. lagi ada apa nih?",
         error: "Kayaknya ada yang ganggu koneksi kita barusan.",
         fallback: "aku dengerin kok.",
@@ -62,10 +60,9 @@ export default function Dashboard() {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isTyping]);
 
-    function toggleLang() {
-        const next: Lang = lang === "en" ? "id" : "en";
+    function toggleLang(next: Lang) {
+        if (next === lang) return;
         setLang(next);
-        // Reset conversation dengan opening sesuai bahasa baru
         setMessages([
             {
                 role: "assistant",
@@ -133,19 +130,35 @@ export default function Dashboard() {
                     <p className="text-sm text-zinc-400">{t.session(role)}</p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {/* Language toggle */}
-                    <button
-                        onClick={toggleLang}
-                        className="border border-white/30 px-3 py-1.5 rounded-xl text-sm text-zinc-300 hover:border-white hover:text-white transition-colors"
-                        title={lang === "en" ? "Switch to Bahasa Indonesia" : "Switch to English"}
-                    >
-                        {t.langLabel}
-                    </button>
+                <div className="flex items-center gap-3">
+                    {/* Pill toggle */}
+                    <div className="relative flex items-center bg-zinc-900 border border-white/10 rounded-full p-[3px]">
+                        {/* sliding pill */}
+                        <div
+                            className="absolute top-[3px] h-[calc(100%-6px)] w-[44px] bg-white rounded-full transition-transform duration-200"
+                            style={{
+                                transform: lang === "id" ? "translateX(0)" : "translateX(44px)",
+                            }}
+                        />
+                        <button
+                            onClick={() => toggleLang("id")}
+                            className={`relative z-10 w-[44px] py-1.5 rounded-full text-xs font-medium transition-colors duration-200 ${lang === "id" ? "text-black" : "text-zinc-500"
+                                }`}
+                        >
+                            ID
+                        </button>
+                        <button
+                            onClick={() => toggleLang("en")}
+                            className={`relative z-10 w-[44px] py-1.5 rounded-full text-xs font-medium transition-colors duration-200 ${lang === "en" ? "text-black" : "text-zinc-500"
+                                }`}
+                        >
+                            EN
+                        </button>
+                    </div>
 
                     <button
                         onClick={logout}
-                        className="border border-white px-4 py-2 rounded-xl"
+                        className="border border-white/20 hover:border-white px-4 py-2 rounded-xl text-sm transition-colors"
                     >
                         {t.logout}
                     </button>

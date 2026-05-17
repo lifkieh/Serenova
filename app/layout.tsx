@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "A safe anonymous space to reflect and journal",
 };
 
+import ThemeProvider from "@/components/ui/ThemeProvider";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,8 +29,10 @@ export default function RootLayout({
       lang="en"
       className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-black text-white flex flex-col">
-        {children}
+      <body className="min-h-full flex flex-col">
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

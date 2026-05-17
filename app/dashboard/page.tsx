@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import {
     useEffect,
     useRef,
     useState,
 } from "react";
+import MoodPicker from "@/components/ui/mood/MoodPicker";
 
 type Lang = "en" | "id";
 
@@ -12,7 +13,7 @@ const UI = {
     en: {
         session: (role: string) =>
             role === "guest" ? "Guest Session" : "Private Session",
-        typing: "Serenova is typing...",
+        typing: "Thinking...",
         placeholder: "Talk to Serenova...",
         send: "Send",
         logout: "Logout",
@@ -23,7 +24,7 @@ const UI = {
     id: {
         session: (role: string) =>
             role === "guest" ? "Sesi Tamu" : "Sesi Pribadi",
-        typing: "Serenova lagi ngetik...",
+        typing: "Berpikir...",
         placeholder: "Cerita ke Serenova...",
         send: "Kirim",
         logout: "Keluar",
@@ -38,6 +39,8 @@ export default function Dashboard() {
     const [message, setMessage] = useState("");
     const [isTyping, setIsTyping] = useState(false);
     const [lang, setLang] = useState<Lang>("en");
+    const [showMoodPicker, setShowMoodPicker] = useState(false);
+    const [conversationId, setConversationId] = useState<string | null>(null);
 
     const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +82,7 @@ export default function Dashboard() {
         const userMessage = { role: "user", content: currentMessage };
 
         const updatedMessages = [...messages, userMessage];
-        setMessages(updatedMessages);
+        setMessages([...updatedMessages, { role: "assistant", content: "" }]);
         setMessage("");
         setIsTyping(true);
 
@@ -90,26 +93,56 @@ export default function Dashboard() {
                 body: JSON.stringify({
                     messages: updatedMessages,
                     lang,
+                    conversationId,
                 }),
             });
 
-            const data = await res.json();
+            if (!res.body) throw new Error("No response body");
+            
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let done = false;
+            let fullResponse = "";
 
-            setMessages((prev) => [
-                ...prev,
-                {
-                    role: "assistant",
-                    content: data.response || UI[lang].fallback,
-                },
-            ]);
+            while (!done) {
+                const { value, done: doneReading } = await reader.read();
+                done = doneReading;
+                
+                const chunkValue = decoder.decode(value, { stream: true });
+                const lines = chunkValue.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6);
+                        if (data === '[DONE]') {
+                            done = true;
+                            break;
+                        }
+                        
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.conversationId && !conversationId) {
+                                setConversationId(parsed.conversationId);
+                            } else if (parsed.content) {
+                                fullResponse += parsed.content;
+                                setMessages((prev) => {
+                                    const newMsgs = [...prev];
+                                    newMsgs[newMsgs.length - 1].content = fullResponse;
+                                    return newMsgs;
+                                });
+                            }
+                        } catch (e) {
+                            // ignore partial JSON due to chunking edges
+                        }
+                    }
+                }
+            }
         } catch {
-            setMessages((prev) => [
-                ...prev,
-                {
-                    role: "assistant",
-                    content: UI[lang].error,
-                },
-            ]);
+            setMessages((prev) => {
+                const newMsgs = [...prev];
+                newMsgs[newMsgs.length - 1].content = UI[lang].error;
+                return newMsgs;
+            });
         } finally {
             setIsTyping(false);
         }
@@ -131,6 +164,15 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <a href="/journal" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                        Journal
+                    </a>
+                    <a href="/analytics" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                        Rhythm
+                    </a>
+                    <a href="/reflections" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                        Reflect
+                    </a>
                     {/* Pill toggle */}
                     <div className="relative flex items-center bg-zinc-900 border border-white/10 rounded-full p-[3px]">
                         {/* sliding pill */}
@@ -165,29 +207,55 @@ export default function Dashboard() {
                 </div>
             </div>
 
+
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <p className="text-xs text-zinc-600 text-center pb-2">
+                    {lang === "id"
+                        ? "Percakapan diproses oleh AI pihak ketiga. Hindari berbagi info pribadi."
+                        : "Conversations are processed by a third-party AI. Avoid sharing personal info."}
+                </p>
+
                 {messages.map((msg, index) => (
                     <div
                         key={index}
                         className={`max-w-[80%] p-4 rounded-2xl ${msg.role === "user"
-                                ? "ml-auto bg-white text-black"
-                                : "bg-zinc-900 border border-white/10"
+                            ? "ml-auto bg-white text-black"
+                            : "bg-zinc-900 border border-white/10"
                             }`}
                     >
                         {msg.content}
                     </div>
                 ))}
 
-                {isTyping && (
-                    <div className="max-w-[80%] p-4 rounded-2xl bg-zinc-900 border border-white/10 text-zinc-400 animate-pulse">
-                        {t.typing}
+                {isTyping && messages[messages.length - 1]?.content === "" && (
+                    <div className="max-w-[80%] p-4 rounded-2xl bg-zinc-900 border border-white/10 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-[pulse_1.4s_ease-in-out_infinite]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
                     </div>
                 )}
 
                 <div ref={bottomRef} />
             </div>
-
-            <div className="p-4 border-t border-white/10 flex gap-2">
+            <p className="px-4 pt-3 text-xs text-zinc-600 text-center">
+                {lang === "id"
+                    ? "Percakapan diproses oleh AI pihak ketiga. Hindari berbagi info pribadi."
+                    : "Conversations are processed by a third-party AI. Avoid sharing personal info."}
+            </p>
+            <div className="border-t border-white/10 pt-2 pb-0 px-4 mt-2">
+                <button 
+                    onClick={() => setShowMoodPicker(!showMoodPicker)} 
+                    className="text-xs text-zinc-500 hover:text-white transition-colors flex items-center gap-1"
+                >
+                    {showMoodPicker ? "Hide Mood" : "Set Mood"}
+                </button>
+                {showMoodPicker && (
+                    <div className="mt-2">
+                        <MoodPicker />
+                    </div>
+                )}
+            </div>
+            <div className="p-4 flex gap-2">
                 <input
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}

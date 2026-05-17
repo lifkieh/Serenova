@@ -4,11 +4,6 @@ import { BASE_ID, BASE_EN } from "./prompts/base";
 import { SITUATIONS_ID, SITUATIONS_EN } from "./prompts/situations";
 import { IDENTITY_ID, IDENTITY_EN } from "./prompts/identity";
 
-const client = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
-
 const SYSTEM_PROMPT_ID = [BASE_ID, SITUATIONS_ID, IDENTITY_ID].join("\n\n");
 const SYSTEM_PROMPT_EN = [BASE_EN, SITUATIONS_EN, IDENTITY_EN].join("\n\n");
 
@@ -19,6 +14,11 @@ type Message = {
 
 export async function POST(req: Request) {
   try {
+    const client = new OpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+    });
+
     const cookieStore = await cookies();
     const session = cookieStore.get("session");
     const isGuest = session?.value === "guest";

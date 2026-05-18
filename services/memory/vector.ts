@@ -1,39 +1,42 @@
-/**
- * Generate embeddings for emotional themes using a lightweight model.
- * Returns a 768-dimension vector.
- * 
- * NOTE: OpenRouter doesn't support embeddings natively.
- * This uses a direct embedding endpoint — swap to your preferred provider.
- * For now, this is a preparation layer that returns null if unavailable.
- */
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 export async function generateEmbedding(text: string): Promise<number[] | null> {
-    // Guard: if no embedding key is configured, skip gracefully
-    if (!process.env.EMBEDDING_API_KEY) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.EMBEDDING_API_KEY;
+    if (!apiKey) {
         return null;
     }
 
     try {
-        const res = await fetch("https://api.openai.com/v1/embeddings", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.EMBEDDING_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: "text-embedding-3-small",
-                input: text,
-            }),
-        });
-
-        if (!res.ok) {
-            console.error("Embedding API error:", res.status);
-            return null;
-        }
-
-        const json = await res.json();
-        return json.data?.[0]?.embedding || null;
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+        const result = await model.embedContent(text);
+        return result.embedding?.values || null;
     } catch (error) {
-        console.error("Embedding generation error:", error);
+        console.error("Gemini embedding generation error:", error);
+
+        // Fallback to OpenAI if EMBEDDING_API_KEY is configured
+        if (process.env.EMBEDDING_API_KEY) {
+            try {
+                const res = await fetch("https://api.openai.com/v1/embeddings", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${process.env.EMBEDDING_API_KEY}`,
+                    },
+                    body: JSON.stringify({
+                        model: "text-embedding-3-small",
+                        input: text,
+                    }),
+                });
+
+                if (res.ok) {
+                    const json = await res.json();
+                    return json.data?.[0]?.embedding || null;
+                }
+            } catch (fallbackError) {
+                console.error("OpenAI embedding fallback error:", fallbackError);
+            }
+        }
         return null;
     }
 }

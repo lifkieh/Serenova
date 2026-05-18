@@ -19,6 +19,7 @@ export async function persistConversation(userId: string, title?: string): Promi
 }
 
 export async function persistMessage(params: {
+    id?: string;
     userId: string;
     conversationId: string;
     role: "user" | "assistant" | "system";
@@ -30,6 +31,7 @@ export async function persistMessage(params: {
     const { error } = await supabase
         .from("messages")
         .insert([{
+            id: params.id,
             user_id: params.userId,
             conversation_id: params.conversationId,
             role: params.role,

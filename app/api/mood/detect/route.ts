@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { getUserId } from "@/lib/auth";
-import OpenAI from "openai";
+import { getChatModel, withModelFallback } from "@/services/ai/router";
 import { sanitizeForPrompt } from "@/lib/sanitize";
 
 export async function POST(req: Request) {
@@ -14,25 +14,21 @@ export async function POST(req: Request) {
 
         if (!message) return NextResponse.json({ error: "Message is required" }, { status: 400 });
 
-        const client = new OpenAI({
-            baseURL: "https://openrouter.ai/api/v1",
-            apiKey: process.env.OPENROUTER_API_KEY,
-        });
-
         const prompt = `Analyze the emotional tone of the following message and return exactly one mood tag from this list:
 [calm, tired, overwhelmed, anxious, lonely, hopeful, numb, frustrated, grateful].
 If none perfectly fit, pick the closest one. Return ONLY the single word, nothing else.
 
 Message: "${sanitizeForPrompt(message)}"`;
 
-        const completion = await client.chat.completions.create({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-        });
+        const { text } = await withModelFallback(
+            getChatModel(),
+            [{ role: "user", content: prompt }],
+            {
+                temperature: 0.1,
+            }
+        );
 
-        const detectedMood = completion.choices[0].message.content?.trim().toLowerCase();
-        
+        const detectedMood = text.trim().toLowerCase();
         const validMoods = ['calm', 'tired', 'overwhelmed', 'anxious', 'lonely', 'hopeful', 'numb', 'frustrated', 'grateful'];
         
         if (detectedMood && validMoods.includes(detectedMood)) {

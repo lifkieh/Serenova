@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.env
+.env.local
+.env.production
+
+.supabase
+supabase
+supabase/schema
+migrations

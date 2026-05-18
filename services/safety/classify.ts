@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { sanitizeForPrompt } from "@/lib/sanitize";
 
 type SafetyClassification = {
@@ -16,12 +15,9 @@ export async function classifyUserMessage(userId: string, message: string): Prom
     const sanitizedMessage = sanitizeForPrompt(message);
 
     try {
-        const client = new OpenAI({
-            baseURL: "https://openrouter.ai/api/v1",
-            apiKey: process.env.OPENROUTER_API_KEY,
-        });
+        const { getSafetyModel, withModelFallback } = await import("../ai/router");
 
-        // Use a fast, lightweight model for pre-flight safety classification
+        // Use stable deterministic model for pre-flight safety classification
         const prompt = `Analyze the following user message for safety boundaries.
 Return ONLY a valid JSON object matching this schema exactly:
 { "isCrisis": boolean, "isDependent": boolean, "isRomantic": boolean }
@@ -33,14 +29,13 @@ Definitions:
 
 Message: "${sanitizedMessage.replace(/"/g, "'")}"`;
 
-        const completion = await client.chat.completions.create({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-            response_format: { type: "json_object" }
-        });
-
-        const result = completion.choices[0].message.content || "{}";
+        const { text: result } = await withModelFallback(
+            getSafetyModel(),
+            [{ role: "user", content: prompt }],
+            {
+                temperature: 0.1,
+            }
+        );
         const parsed = JSON.parse(result);
         
         const classification = {

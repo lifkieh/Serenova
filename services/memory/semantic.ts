@@ -55,7 +55,7 @@ export async function getLayeredMemory(
 
     // Layer 2: Semantic retrieval (when embeddings are available)
     let semanticContext = "";
-    if (queryText && process.env.EMBEDDING_API_KEY) {
+    if (queryText && (process.env.EMBEDDING_API_KEY || process.env.GEMINI_API_KEY)) {
         try {
             const { generateEmbedding } = await import("@/services/memory/vector");
             const embedding = await generateEmbedding(queryText);

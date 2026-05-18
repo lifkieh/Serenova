@@ -54,3 +54,40 @@ export function createPacedStream(
         }
     })();
 }
+
+/**
+ * Paces a fully pre-generated and vetted text string as an SSE stream.
+ * Employs serene, punctuation-aware breathing pauses for a calm cadence.
+ */
+export async function paceFullTextStream(
+    fullText: string,
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    onComplete: (completed: string) => void
+) {
+    const encoder = new TextEncoder();
+    // Split text by words and whitespaces to preserve stream flow
+    const chunks = fullText.split(/(\s+)/);
+
+    try {
+        for (const chunk of chunks) {
+            if (!chunk) continue;
+            
+            // Send chunk formatted as valid SSE
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));
+            
+            // Serene pacing delays
+            let delay = 10;
+            if (/[.!?,;:—–]/.test(chunk)) {
+                delay = 140; // Restful pause at sentence boundaries
+            } else if (/\n/.test(chunk)) {
+                delay = 200; // Reflective pause at paragraphs
+            }
+            
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        onComplete(fullText);
+    } catch (err) {
+        onComplete(fullText);
+        throw err;
+    }
+}

@@ -1,7 +1,9 @@
 import { getSupabase } from "@/lib/supabase";
-import OpenAI from "openai";
+import { withModelFallback, getReflectionModel } from "../ai/router";
+import { WEEKLY_REFLECTION_QUALITY_CONFIG, MONTHLY_REFLECTION_QUALITY_CONFIG } from "../reflections/config";
+import { Logger } from "../logging/logger";
 
-export async function generateWeeklyReflection(userId: string) {
+export async function generateWeeklyReflection(userId: string): Promise<string | null> {
     const supabase = getSupabase();
 
     const sevenDaysAgo = new Date();
@@ -41,42 +43,56 @@ Recent themes discussed:
 ${memories?.map(m => m.theme).join(', ')}
 `;
 
-    const client = new OpenAI({
-        baseURL: "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-    });
+    const prompt = `You are a quiet, late-night thoughtful emotional journaling companion.
+Read the user's journals and moods from the past week.
+Goal: Provide a warm, calm, and deeply grounded emotional reflection of about 3-4 sentences.
 
-    const prompt = `You are generating a weekly emotional reflection for the user.
-Tone: Reflective, emotionally mature, calm, grounded.
-NEVER: use a motivational coach tone, therapist tone, diagnosis, or exaggerated praise.
-Goal: Provide a short 2-3 sentence reflection on how their week felt based on the data.
+Guidelines:
+- Notice recurring feelings or subtle emotional patterns gently ("It seems like things carried a bit of weight around mid-week", "There's a quiet space where you found a moment to catch your breath").
+- Surface recurring themes softly without labeling, diagnosing, or telling them what to do.
+- Keep the language soft, natural, and spacious.
+- STRICTLY AVOID:
+  * Therapist tone or clinical/diagnostic phrasing (do not say "Your coping mechanism", "depression", "anxiety", "clinical validation").
+  * Productivity/coaching jargon (do not say "You are making progress!", "Keep it up!", "Success", "Goal-oriented tracking").
+  * Exaggerated, robotic reassurance ("I am always here for you", "You are so strong").
+  * Motivational clichés ("Tetap semangat!", "Kamu pasti bisa!").
 
-Data:
+Data for the week:
 ${summaryContext}
 `;
 
-    const completion = await client.chat.completions.create({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-    });
+    try {
+        const { text: reflectionContent, modelUsed } = await withModelFallback(
+            getReflectionModel(),
+            [{ role: "user", content: prompt }],
+            {
+                temperature: WEEKLY_REFLECTION_QUALITY_CONFIG.temperature,
+                max_tokens: WEEKLY_REFLECTION_QUALITY_CONFIG.maxTokens,
+            }
+        );
 
-    const reflectionContent = completion.choices[0].message.content?.trim();
+        if (reflectionContent) {
+            await supabase.from("reflections").insert([{
+                user_id: userId,
+                type: "weekly",
+                period_start: sevenDaysAgo.toISOString(),
+                period_end: new Date().toISOString(),
+                content: reflectionContent
+            }]);
+        }
 
-    if (reflectionContent) {
-        await supabase.from("reflections").insert([{
-            user_id: userId,
-            type: "weekly",
-            period_start: sevenDaysAgo.toISOString(),
-            period_end: new Date().toISOString(),
-            content: reflectionContent
-        }]);
+        return reflectionContent;
+    } catch (err: any) {
+        Logger.error({
+            action: "WEEKLY_REFLECTION_GENERATION_FAILED",
+            userId,
+            error: err.message,
+        });
+        return null;
     }
-
-    return reflectionContent;
 }
 
-export async function generateMonthlyReflection(userId: string) {
+export async function generateMonthlyReflection(userId: string): Promise<string | null> {
     const supabase = getSupabase();
 
     const thirtyDaysAgo = new Date();
@@ -122,37 +138,51 @@ Weekly reflections this month:
 ${weeklyReflections?.map(r => `- ${r.content}`).join('\n')}
 `;
 
-    const client = new OpenAI({
-        baseURL: "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-    });
+    const prompt = `You are a quiet, late-night thoughtful emotional journaling companion.
+Read the user's monthly entries, moods, themes, and weekly checkpoint summaries.
+Goal: Provide a profound, warm, and deeply grounded emotional reflection (about 4-5 sentences).
 
-    const prompt = `You are generating a monthly emotional reflection.
-Tone: Reflective, emotionally mature, calm, grounded. Like a quiet observation.
-NEVER: motivational coach, therapist, diagnosis, exaggerated praise, "you improved!"
-Goal: 3-4 sentences capturing how this month felt emotionally. Note shifts, recurring weight, lighter moments.
+Guidelines:
+- Capture the emotional rhythm of the past month, noting quiet shifts, recurring weights, and lighter, peaceful moments.
+- Focus on emotional patterns gently. Avoid diagnostic labeling or advice overload.
+- Keep the tone observational, spacious, and calming.
+- STRICTLY AVOID:
+  * Therapist tone or clinical/diagnostic phrasing (do not say "Your coping mechanism", "depression", "anxiety", "clinical validation").
+  * Productivity/coaching jargon (do not say "You are making progress!", "Keep it up!", "Success", "Goal-oriented tracking").
+  * Exaggerated, robotic reassurance ("I am always here for you", "You are so strong").
+  * Motivational clichés ("Tetap semangat!", "Kamu pasti bisa!").
 
-Data:
+Data for the month:
 ${summaryContext}
 `;
 
-    const completion = await client.chat.completions.create({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-    });
+    try {
+        const { text: reflectionContent, modelUsed } = await withModelFallback(
+            getReflectionModel(),
+            [{ role: "user", content: prompt }],
+            {
+                temperature: MONTHLY_REFLECTION_QUALITY_CONFIG.temperature,
+                max_tokens: MONTHLY_REFLECTION_QUALITY_CONFIG.maxTokens,
+            }
+        );
 
-    const reflectionContent = completion.choices[0].message.content?.trim();
+        if (reflectionContent) {
+            await supabase.from("reflections").insert([{
+                user_id: userId,
+                type: "monthly",
+                period_start: thirtyDaysAgo.toISOString(),
+                period_end: new Date().toISOString(),
+                content: reflectionContent
+            }]);
+        }
 
-    if (reflectionContent) {
-        await supabase.from("reflections").insert([{
-            user_id: userId,
-            type: "monthly",
-            period_start: thirtyDaysAgo.toISOString(),
-            period_end: new Date().toISOString(),
-            content: reflectionContent
-        }]);
+        return reflectionContent;
+    } catch (err: any) {
+        Logger.error({
+            action: "MONTHLY_REFLECTION_GENERATION_FAILED",
+            userId,
+            error: err.message,
+        });
+        return null;
     }
-
-    return reflectionContent;
 }

@@ -47,51 +47,69 @@ export async function getContextualMemory(
     for (const mem of deduplicated.values()) {
         let score = 0;
 
-        // Frequency weight (recurring themes matter more)
-        score += Math.min((mem.frequency || 1) * 1.5, 15); // cap at 15
+        // 1. Frequency weight (recurring themes matter more)
+        score += Math.min((mem.frequency || 1) * 2.0, 15); // Cap frequency contribution at 15
 
-        // Importance weight
-        score += (mem.importance_score || 0) * 2;
+        // 2. Enhanced Emotional Importance & Relevance Scaling
+        score += (mem.importance_score || 0) * 2.5;
+        score += (mem.emotional_relevance || 0) * 2.0;
 
-        // Emotional relevance weight
-        score += (mem.emotional_relevance || 0) * 1.5;
-
-        // Recency bonus/penalty
+        // 3. Continuous Freshness Decay (Exponential half-life of 7 days)
         const lastSeen = new Date(mem.last_seen);
-        const daysSince = (Date.now() - lastSeen.getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince < 3) {
-            score += 4; // Very recent
-        } else if (daysSince < 7) {
-            score += 2; // Recent
-        } else if (daysSince > 30 && (mem.frequency || 1) < 3) {
-            score -= 3; // Decay: old and rare
+        const daysSince = Math.max(0, (Date.now() - lastSeen.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Freshness boost: up to +6 points for brand new items, decaying exponentially
+        score += Math.max(0, 6 * Math.exp(-daysSince / 7));
+
+        // Long-term active theme support: penalize if neglected for over 30 days
+        if (daysSince > 30 && (mem.frequency || 1) < 4) {
+            score -= 4;
         }
 
-        // Type bonus: patterns and preferences are more stable
-        if (mem.type === "pattern") score += 1;
-        if (mem.type === "preference") score += 2;
+        // 4. Stable Type weights
+        if (mem.type === "pattern") score += 1.5;
+        if (mem.type === "preference") score += 2.5;
 
-        // Mood resonance bonus
+        // 5. Mood Resonance weighting
         if (currentMood) {
             const moodResonance = getMoodResonance(mem.theme, currentMood);
-            score += moodResonance;
+            score += moodResonance * 1.5;
         }
 
-        // Repetition suppression: penalize recently injected themes
-        if (recentlyInjected?.some(r => r.toLowerCase() === mem.theme.toLowerCase())) {
-            score -= 5;
+        // 6. Anti-Repetition Suppression
+        if (recentlyInjected?.some(r => r.toLowerCase().trim() === mem.theme.toLowerCase().trim())) {
+            score -= 10; // Stricter penalty to completely avoid repetitive theme injections
         }
 
         scored.push({ theme: mem.theme, score });
     }
 
-    // Step 3: Sort and pick top 3
+    // Step 3: Sort candidates
     scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, 3).filter(s => s.score > 0);
 
-    if (top.length === 0) return "";
+    // Step 4: Active Diversification (Penalize semantic/word redundancies)
+    const selected: ScoredMemory[] = [];
+    const chosenWords = new Set<string>();
 
-    const themes = top.map(d => d.theme).join(", ");
+    for (const item of scored) {
+        if (item.score <= 0) continue;
+        if (selected.length >= 3) break;
+
+        const words = item.theme.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const overlaps = words.filter(w => chosenWords.has(w));
+
+        // If theme has semantic word overlaps with previously chosen themes, penalize it heavily to force variety
+        const adjustedScore = item.score - (overlaps.length * 4);
+
+        if (adjustedScore > 0 || selected.length === 0) {
+            selected.push(item);
+            words.forEach(w => chosenWords.add(w));
+        }
+    }
+
+    if (selected.length === 0) return "";
+
+    const themes = selected.map(d => d.theme).join(", ");
     return `\n\n## Soft Context\nRecurring emotional themes for this user: ${themes}.\nUse this only to be more attuned — never reference it directly or use it manipulatively.`;
 }
 

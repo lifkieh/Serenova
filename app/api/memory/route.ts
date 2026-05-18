@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { getUserId } from "@/lib/auth";
-import OpenAI from "openai";
 import { rateLimit } from "@/lib/rateLimit";
+import { getChatModel, withModelFallback } from "@/services/ai/router";
 
 const lastDecayRun = new Map<string, number>();
 const DECAY_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
@@ -31,11 +31,6 @@ export async function POST(req: Request) {
 
         const recentMessages = messages.slice(-10).map((m: { role: string; content: string }) => m.content).join("\n");
 
-        const client = new OpenAI({
-            baseURL: "https://openrouter.ai/api/v1",
-            apiKey: process.env.OPENROUTER_API_KEY,
-        });
-
         const prompt = `Extract recurring emotional themes from the following messages.
 Rules:
 - Extract ONLY emotional themes (e.g., "work stress", "loneliness", "anxiety at night").
@@ -45,14 +40,14 @@ Rules:
 Messages:
 ${recentMessages}`;
 
-        const completion = await client.chat.completions.create({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.1,
-        });
+        const { text: content } = await withModelFallback(
+            getChatModel(),
+            [{ role: "user", content: prompt }],
+            {
+                temperature: 0.1,
+            }
+        );
 
-        const content = completion.choices[0].message.content?.trim() || "[]";
-        
         let themes: string[] = [];
         try {
             themes = JSON.parse(content);

@@ -4,6 +4,7 @@ export type SoftAnalytics = {
     totalJournals: number;
     topMoods: { mood: string; count: number }[];
     recentThemes: string[];
+    recentMoods: { mood: string; created_at: string }[];
 };
 
 export async function getSoftAnalytics(userId: string): Promise<SoftAnalytics> {
@@ -12,10 +13,11 @@ export async function getSoftAnalytics(userId: string): Promise<SoftAnalytics> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [{ count: totalJournals }, { data: moods }, { data: themes }] = await Promise.all([
+    const [{ count: totalJournals }, { data: moods }, { data: themes }, { data: recentMoods }] = await Promise.all([
         supabase.from("journals").select("*", { count: "exact", head: true }).eq("user_id", userId),
         supabase.from("moods").select("mood").eq("user_id", userId).gte("created_at", thirtyDaysAgo.toISOString()),
-        supabase.from("memory_context").select("theme").eq("user_id", userId).order("frequency", { ascending: false }).limit(5)
+        supabase.from("memory_context").select("theme").eq("user_id", userId).eq("is_active", true).order("frequency", { ascending: false }).limit(5),
+        supabase.from("moods").select("mood, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(7)
     ]);
 
     const moodCounts: Record<string, number> = {};
@@ -33,6 +35,7 @@ export async function getSoftAnalytics(userId: string): Promise<SoftAnalytics> {
     return {
         totalJournals: totalJournals || 0,
         topMoods,
-        recentThemes: themes?.map(t => t.theme) || []
+        recentThemes: themes?.map(t => t.theme) || [],
+        recentMoods: recentMoods || []
     };
 }

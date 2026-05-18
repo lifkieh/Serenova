@@ -19,19 +19,30 @@
 
 // Primary chat models — ordered by Serenova alignment fit (Journal/Reflective mode)
 export const CHAT_PRIMARY: string[] = [
-  "openai/gpt-oss-120b",
-  "google/gemini-3.1-pro-preview",
-  "google/gemini-2.5-flash-lite"
+  "groq::llama-3.3-70b-versatile",  // ultra-fast, primary
+  "openai/gpt-oss-120b",             // quality fallback
+  "google/gemini-3.1-pro-preview",   // reliable fallback
+  "google/gemini-2.5-flash-lite"     // last resort
 ];
 
 // Chill & Talk mode models — separate casual/Gen-Z supportive chain of models
 // Completely disjoint from CHAT_PRIMARY and contains no Gemini models
 export const CHAT_CHILL: string[] = [
-  "meta-llama/llama-3.3-70b-instruct",
-  "x-ai/grok-3-mini",
+  "groq::llama-3.3-70b-versatile",           // ultra-fast, free via Groq
+  "meta-llama/llama-3.3-70b-instruct:free",  // OpenRouter free fallback
+  "google/gemini-2.5-flash-lite",             // paid fallback
   "mistralai/mistral-small-3.2-24b-instruct-2506",
-  "mistralai/mistral-7b-instruct-v0.1",
-  "perplexity/sonar"
+];
+
+// Groq models — ultra-low latency, separate provider
+export const GROQ_CHAT: string[] = [
+  "groq::llama-3.3-70b-versatile",
+  "groq::llama3-8b-8192",
+];
+
+export const GROQ_CHILL: string[] = [
+  "groq::llama-3.3-70b-versatile",
+  "groq::llama3-8b-8192",
 ];
 
 // Reflection generation — needs deep instruction adherence for persona consistency
@@ -53,7 +64,14 @@ export const SAFETY_QUICK: string[] = [
   "google/gemini-2.5-flash-lite",
 ];
 
-export type ModelGroup = "CHAT_PRIMARY" | "CHAT_CHILL" | "REFLECTION_PREMIUM" | "SAFETY_EVALUATOR" | "SAFETY_QUICK";
+export type ModelGroup =
+  | "CHAT_PRIMARY"
+  | "CHAT_CHILL"
+  | "REFLECTION_PREMIUM"
+  | "SAFETY_EVALUATOR"
+  | "SAFETY_QUICK"
+  | "GROQ_CHAT"
+  | "GROQ_CHILL";
 
 export interface ModelTimeoutMetadata {
   firstChunkTimeoutMs: number;
@@ -64,11 +82,10 @@ const DEFAULT_TIMEOUTS: ModelTimeoutMetadata = {
   firstChunkTimeoutMs: 15000,
   idleTimeoutMs: 30000,
 };
-
 const MODEL_TIMEOUT_METADATA: Record<string, ModelTimeoutMetadata> = {
   "google/gemini-2.5-flash-lite": {
-    firstChunkTimeoutMs: 15000,
-    idleTimeoutMs: 30000,
+    firstChunkTimeoutMs: 12000,
+    idleTimeoutMs: 25000,
   },
   "google/gemini-3.1-pro-preview": {
     firstChunkTimeoutMs: 15000,
@@ -78,25 +95,21 @@ const MODEL_TIMEOUT_METADATA: Record<string, ModelTimeoutMetadata> = {
     firstChunkTimeoutMs: 20000,  // MoE routing may add slight cold-start
     idleTimeoutMs: 30000,
   },
-  "meta-llama/llama-3.3-70b-instruct": {
-    firstChunkTimeoutMs: 18000,
+  "meta-llama/llama-3.3-70b-instruct:free": {
+    firstChunkTimeoutMs: 20000, // Free tier can have slight queue delay
     idleTimeoutMs: 30000,
-  },
-  "x-ai/grok-3-mini": {
-    firstChunkTimeoutMs: 12000,
-    idleTimeoutMs: 25000,
   },
   "mistralai/mistral-small-3.2-24b-instruct-2506": {
     firstChunkTimeoutMs: 15000,
     idleTimeoutMs: 28000,
   },
-  "mistralai/mistral-7b-instruct-v0.1": {
-    firstChunkTimeoutMs: 15000,
-    idleTimeoutMs: 28000,
+  "groq::llama-3.3-70b-versatile": {
+    firstChunkTimeoutMs: 5000,  // Groq is extremely fast
+    idleTimeoutMs: 15000,
   },
-  "perplexity/sonar": {
-    firstChunkTimeoutMs: 12000,
-    idleTimeoutMs: 25000,
+  "groq::llama3-8b-8192": {
+    firstChunkTimeoutMs: 3000,
+    idleTimeoutMs: 10000,
   },
 };
 
@@ -119,6 +132,10 @@ export function getModelFallbackChain(group: ModelGroup): string[] {
       return SAFETY_EVALUATOR;
     case "SAFETY_QUICK":
       return SAFETY_QUICK;
+    case "GROQ_CHAT":
+      return GROQ_CHAT;
+    case "GROQ_CHILL":
+      return GROQ_CHILL;
     default:
       return CHAT_PRIMARY;
   }

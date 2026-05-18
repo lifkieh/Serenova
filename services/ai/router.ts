@@ -1,4 +1,5 @@
 import { getOpenRouterCompletion } from "./openrouter";
+import { getGroqCompletion } from "./groq";
 import { getModelFallbackChain, ModelGroup } from "./models";
 import { Logger } from "../logging/logger";
 
@@ -23,13 +24,24 @@ export async function withModelFallback(
   for (let i = 0; i < fallbackChain.length; i++) {
     const currentModel = fallbackChain[i];
     try {
-      const text = await getOpenRouterCompletion({
-        model: currentModel,
-        messages,
-        temperature: options?.temperature,
-        max_tokens: options?.max_tokens,
-        signal: options?.signal,
-      });
+      const isGroq = currentModel.startsWith("groq::");
+      const modelId = isGroq ? currentModel.replace("groq::", "") : currentModel;
+
+      const text = isGroq
+        ? await getGroqCompletion({
+            model: modelId,
+            messages,
+            temperature: options?.temperature,
+            max_tokens: options?.max_tokens,
+            signal: options?.signal,
+          })
+        : await getOpenRouterCompletion({
+            model: currentModel,
+            messages,
+            temperature: options?.temperature,
+            max_tokens: options?.max_tokens,
+            signal: options?.signal,
+          });
 
       return { text, modelUsed: currentModel };
     } catch (err: any) {
@@ -88,4 +100,12 @@ export function getSafetyModel(): string[] {
 /** Fast single-model chain for preflight safety checks — no slow free-tier fallbacks. */
 export function getSafetyQuickModel(): string[] {
   return getModelFallbackChain("SAFETY_QUICK");
+}
+
+export function getGroqChatModel(): string[] {
+  return getModelFallbackChain("GROQ_CHAT");
+}
+
+export function getGroqChillModel(): string[] {
+  return getModelFallbackChain("GROQ_CHILL");
 }

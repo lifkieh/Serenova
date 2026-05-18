@@ -90,6 +90,49 @@ const UI = {
   },
 };
 
+function renderContent(content: string) {
+  const imageRegex = /!\[([^\]]*)\]\((https?:\/\/[^\)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = imageRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <span key={lastIndex}>{content.slice(lastIndex, match.index)}</span>
+      );
+    }
+    parts.push(
+      <div key={match.index} className="my-3">
+        <img
+          src={match[2]}
+          alt={match[1]}
+          className="rounded-xl max-w-full w-64 h-64 object-cover opacity-0 transition-opacity duration-500"
+          loading="lazy"
+          onLoad={(e) => {
+            (e.target as HTMLImageElement).classList.replace("opacity-0", "opacity-100");
+          }}
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+        {match[1] && (
+          <p className="text-xs text-zinc-500 mt-1">{match[1]}</p>
+        )}
+      </div>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(
+      <span key={lastIndex}>{content.slice(lastIndex)}</span>
+    );
+  }
+
+  return <div>{parts}</div>;
+}
+
 export default function ChillDashboard() {
   const [role, setRole] = useState("");
   const [message, setMessage] = useState("");
@@ -1077,7 +1120,7 @@ export default function ChillDashboard() {
                   : "bg-zinc-950 border border-white/5 text-zinc-300 rounded-tl-sm select-text"
               }`}
             >
-              <div>{msg.content}</div>
+              {renderContent(msg.content)}
 
               {/* 1. Subtle, platonically styled Beta Feedback System */}
               {msg.role === "assistant" && msg.id && (

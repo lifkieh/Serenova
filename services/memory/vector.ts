@@ -1,5 +1,3 @@
-import OpenAI from "openai";
-
 /**
  * Generate embeddings for emotional themes using a lightweight model.
  * Returns a 768-dimension vector.

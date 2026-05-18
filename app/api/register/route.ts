@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
     try {
+        const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+        const { allowed } = rateLimit(`register:${ip}`, 5, 3_600_000);
+        if (!allowed) {
+            return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+        }
+
         const body = await req.json();
 
         const username = body.username?.trim();
@@ -11,7 +19,7 @@ export async function POST(req: Request) {
 
         if (!username || !password) {
             return NextResponse.json(
-                { error: "Username dan password wajib diisi" },
+                { error: "Username and password are required" },
                 { status: 400 }
             );
         }
@@ -19,21 +27,40 @@ export async function POST(req: Request) {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const supabase = getSupabase();
-        const { error } = await supabase.from("users").insert({
+        const { data: user, error } = await supabase.from("users").insert({
             username,
             password: hashedPassword,
-        });
+        }).select().single();
 
-        if (error) {
+        if (error || !user) {
             return NextResponse.json(
-                { error: error.message },
+                { error: error?.message || "Registration failed" },
                 { status: 400 }
             );
         }
 
-        return NextResponse.json({
+        const secret = new TextEncoder().encode(process.env.JWT_SECRET || "default_secret_for_dev_only_change_in_prod");
+        const token = await new SignJWT({ userId: user.id, role: "user" })
+            .setProtectedHeader({ alg: "HS256" })
+            .setIssuedAt()
+            .setExpirationTime("7d")
+            .sign(secret);
+
+        const response = NextResponse.json({
             success: true,
         });
+
+        response.cookies.set(
+            "session",
+            token,
+            {
+                httpOnly: true,
+                path: "/",
+                maxAge: 60 * 60 * 24 * 7,
+            }
+        );
+
+        return response;
     } catch (err) {
         return NextResponse.json(
             { error: "Internal server error" },

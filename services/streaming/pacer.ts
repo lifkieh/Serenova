@@ -6,10 +6,9 @@
  */
 
 const PUNCTUATION_FLUSH = /[.!?,;:\n—–\-]/;
-const SENTENCE_END = /[.!?]\s*$/;
 
 export function createPacedStream(
-    sourceStream: AsyncIterable<any>,
+    sourceStream: AsyncIterable<{ choices: { delta: { content?: string | null } }[] }>,
     controller: ReadableStreamDefaultController<Uint8Array>,
     onComplete: (fullResponse: string) => void
 ) {

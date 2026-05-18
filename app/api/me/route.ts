@@ -1,19 +1,15 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
 
 export async function GET() {
-    const cookieStore = await cookies();
+  const session = await getSession();
 
-    const session = cookieStore.get("session");
+  if (!session) {
+    return NextResponse.json({ authenticated: false });
+  }
 
-    if (!session) {
-        return NextResponse.json({
-            authenticated: false,
-        });
-    }
-
-    return NextResponse.json({
-        authenticated: true,
-        role: session.value,
-    });
+  return NextResponse.json({
+    authenticated: true,
+    role: session.role, // "user" or "guest" — NOT username
+  });
 }

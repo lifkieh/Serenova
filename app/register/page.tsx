@@ -30,20 +30,20 @@ export default function RegisterPage() {
 
         localStorage.setItem("session", "user");
 
-        alert("Register berhasil");
+        alert("Registration successful");
 
         router.push("/login");
     }
 
     return (
-        <div className="min-h-screen bg-black text-white flex items-center justify-center">
-            <div className="border border-white p-8 rounded-xl w-[350px]">
-                <h1 className="text-2xl mb-6 font-bold">
+        <main className="min-h-screen bg-black text-white flex items-center justify-center">
+            <div className="w-full max-w-sm space-y-4 border border-white/10 p-8 rounded-2xl bg-zinc-950">
+                <h1 className="text-3xl font-bold">
                     Register
                 </h1>
 
                 <input
-                    className="w-full mb-4 p-3 bg-black border border-white rounded text-white"
+                    className="w-full bg-zinc-900 border border-white/10 p-3 rounded-xl text-white"
                     placeholder="Username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -51,7 +51,7 @@ export default function RegisterPage() {
 
                 <input
                     type="password"
-                    className="w-full mb-4 p-3 bg-black border border-white rounded text-white"
+                    className="w-full bg-zinc-900 border border-white/10 p-3 rounded-xl text-white"
                     placeholder="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -59,18 +59,18 @@ export default function RegisterPage() {
 
                 <button
                     onClick={handleRegister}
-                    className="w-full border border-white p-3 rounded hover:bg-white hover:text-black transition"
+                    className="w-full bg-white text-black p-3 rounded-xl"
                 >
                     Register
                 </button>
 
                 <button
                     onClick={() => router.push("/login")}
-                    className="w-full mt-4 text-sm text-zinc-400 hover:text-white"
+                    className="w-full text-sm text-zinc-400 hover:text-white"
                 >
                     Already have an account? Login
                 </button>
             </div>
-        </div>
+        </main>
     );
 }

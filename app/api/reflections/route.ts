@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
 import { generateWeeklyReflection } from "@/services/reflection/generator";
+import { rateLimit } from "@/lib/rateLimit";
 
 export async function GET() {
     try {
@@ -27,6 +28,14 @@ export async function POST() {
     try {
         const userId = await getUserId();
         if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+        const { allowed, retryAfter } = rateLimit(`reflections:${userId}`, 3, 3_600_000);
+        if (!allowed) {
+            return NextResponse.json(
+                { error: "Reflection limit reached. Try again later." },
+                { status: 429 }
+            );
+        }
 
         const reflection = await generateWeeklyReflection(userId);
         return NextResponse.json({ success: true, data: reflection });

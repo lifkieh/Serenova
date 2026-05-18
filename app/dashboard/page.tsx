@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
     useEffect,
     useRef,
@@ -57,6 +59,23 @@ export default function Dashboard() {
         fetch("/api/me")
             .then((res) => res.json())
             .then((data) => setRole(data.role));
+    }, []);
+
+    // Load conversation history on mount
+    useEffect(() => {
+        fetch("/api/conversations")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.messages && data.messages.length > 0) {
+                    setMessages(data.messages);
+                }
+                if (data.conversationId) {
+                    setConversationId(data.conversationId);
+                }
+            })
+            .catch(() => {
+                // Silently fail — opening message stays
+            });
     }, []);
 
     useEffect(() => {
@@ -164,15 +183,15 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <a href="/journal" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                    <Link href="/journal" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
                         Journal
-                    </a>
-                    <a href="/analytics" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                    </Link>
+                    <Link href="/analytics" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
                         Rhythm
-                    </a>
-                    <a href="/reflections" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
+                    </Link>
+                    <Link href="/reflections" className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">
                         Reflect
-                    </a>
+                    </Link>
                     {/* Pill toggle */}
                     <div className="relative flex items-center bg-zinc-900 border border-white/10 rounded-full p-[3px]">
                         {/* sliding pill */}
@@ -209,12 +228,6 @@ export default function Dashboard() {
 
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                <p className="text-xs text-zinc-600 text-center pb-2">
-                    {lang === "id"
-                        ? "Percakapan diproses oleh AI pihak ketiga. Hindari berbagi info pribadi."
-                        : "Conversations are processed by a third-party AI. Avoid sharing personal info."}
-                </p>
-
                 {messages.map((msg, index) => (
                     <div
                         key={index}
@@ -237,11 +250,6 @@ export default function Dashboard() {
 
                 <div ref={bottomRef} />
             </div>
-            <p className="px-4 pt-3 text-xs text-zinc-600 text-center">
-                {lang === "id"
-                    ? "Percakapan diproses oleh AI pihak ketiga. Hindari berbagi info pribadi."
-                    : "Conversations are processed by a third-party AI. Avoid sharing personal info."}
-            </p>
             <div className="border-t border-white/10 pt-2 pb-0 px-4 mt-2">
                 <button 
                     onClick={() => setShowMoodPicker(!showMoodPicker)} 
@@ -254,6 +262,12 @@ export default function Dashboard() {
                         <MoodPicker />
                     </div>
                 )}
+                
+                <p className="text-[10px] text-zinc-600 text-center mt-3">
+                    {lang === "id"
+                        ? "Percakapan diproses oleh AI pihak ketiga. Hindari berbagi info pribadi."
+                        : "Conversations are processed by a third-party AI. Avoid sharing personal info."}
+                </p>
             </div>
             <div className="p-4 flex gap-2">
                 <input

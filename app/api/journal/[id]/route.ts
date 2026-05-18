@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { getUserId } from "@/lib/auth";
 
+interface JournalUpdatePayload {
+    title?: string;
+    content?: string;
+    mood_tag?: string;
+    updated_at: string;
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
         const userId = await getUserId();
@@ -34,7 +41,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const body = await req.json();
         const { title, content, mood_tag } = body;
 
-        const updateData: any = { updated_at: new Date().toISOString() };
+        const updateData: JournalUpdatePayload = { updated_at: new Date().toISOString() };
         if (title !== undefined) updateData.title = title;
         if (content !== undefined) updateData.content = content;
         if (mood_tag !== undefined) updateData.mood_tag = mood_tag;

@@ -1,13 +1,26 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
+import { getUserId } from "@/lib/auth";
 import OpenAI from "openai";
+import { rateLimit } from "@/lib/rateLimit";
+
+const lastDecayRun = new Map<string, number>();
+const DECAY_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
-        const { userId, messages } = body;
+        const userId = await getUserId();
+        if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        if (!userId || !messages || !Array.isArray(messages)) {
+        const { allowed } = rateLimit(`memory:${userId}`, 10, 60_000);
+        if (!allowed) {
+            return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+        }
+
+        const body = await req.json();
+        const { messages } = body;
+
+        if (!messages || !Array.isArray(messages)) {
             return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
         }
 
@@ -16,7 +29,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true, message: "Skipped" });
         }
 
-        const recentMessages = messages.slice(-10).map((m: any) => m.content).join("\n");
+        const recentMessages = messages.slice(-10).map((m: { role: string; content: string }) => m.content).join("\n");
 
         const client = new OpenAI({
             baseURL: "https://openrouter.ai/api/v1",
@@ -52,41 +65,55 @@ ${recentMessages}`;
             }
         }
 
-        if (Array.isArray(themes) && themes.length > 0) {
+        const themesToInsert = themes.slice(0, 5).map(t => t.toLowerCase());
+
+        if (themesToInsert.length > 0) {
             const supabase = getSupabase();
             
-            for (const theme of themes.slice(0, 5)) {
-                // Check if theme exists
-                const { data: existing } = await supabase
-                    .from("memory_context")
-                    .select("id, frequency")
-                    .eq("user_id", userId)
-                    .ilike("theme", theme)
-                    .single();
-                
+            const { data: existingRecords } = await supabase
+                .from("memory_context")
+                .select("id, theme, frequency")
+                .eq("user_id", userId)
+                .in("theme", themesToInsert);
+
+            const existingMap = new Map((existingRecords || []).map(r => [r.theme, r]));
+            const now = new Date().toISOString();
+
+            const upsertPayload = themesToInsert.map(theme => {
+                const existing = existingMap.get(theme);
                 if (existing) {
-                    await supabase
-                        .from("memory_context")
-                        .update({ 
-                            frequency: existing.frequency + 1,
-                            last_seen: new Date().toISOString()
-                        })
-                        .eq("id", existing.id);
+                    return {
+                        id: existing.id,
+                        user_id: userId,
+                        theme: existing.theme,
+                        frequency: existing.frequency + 1,
+                        last_seen: now
+                    };
                 } else {
-                    await supabase
-                        .from("memory_context")
-                        .insert([{
-                            user_id: userId,
-                            theme: theme.toLowerCase(),
-                            frequency: 1
-                        }]);
+                    return {
+                        user_id: userId,
+                        theme: theme,
+                        frequency: 1,
+                        last_seen: now
+                    };
                 }
-            }
+            });
+
+            await supabase
+                .from("memory_context")
+                .upsert(upsertPayload, { onConflict: "user_id, theme" });
         }
-        // Run decay in background (non-blocking)
-        import("@/services/memory/decay")
-            .then(({ runMemoryDecay }) => runMemoryDecay(userId))
-            .catch(console.error);
+
+        // Run decay in background (non-blocking) with 1 hour rate limit
+        const nowMs = Date.now();
+        const lastRun = lastDecayRun.get(userId) || 0;
+        
+        if (nowMs - lastRun > DECAY_COOLDOWN_MS) {
+            lastDecayRun.set(userId, nowMs);
+            import("@/services/memory/decay")
+                .then(({ runMemoryDecay }) => runMemoryDecay(userId))
+                .catch(console.error);
+        }
 
         return NextResponse.json({ success: true, themes });
     } catch (error) {

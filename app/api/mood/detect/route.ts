@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { getUserId } from "@/lib/auth";
 import OpenAI from "openai";
+import { sanitizeForPrompt } from "@/lib/sanitize";
 
 export async function POST(req: Request) {
     try {
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
 [calm, tired, overwhelmed, anxious, lonely, hopeful, numb, frustrated, grateful].
 If none perfectly fit, pick the closest one. Return ONLY the single word, nothing else.
 
-Message: "${message}"`;
+Message: "${sanitizeForPrompt(message)}"`;
 
         const completion = await client.chat.completions.create({
             model: "google/gemini-2.5-flash-lite",

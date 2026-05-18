@@ -24,7 +24,7 @@ export async function semanticSearch(
             return [];
         }
 
-        return (data || []).map((d: any) => ({
+        return (data || []).map((d: { theme: string; similarity: number }) => ({
             theme: d.theme,
             similarity: d.similarity,
         }));

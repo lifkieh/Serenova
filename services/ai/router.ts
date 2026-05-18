@@ -14,7 +14,7 @@ export async function withModelFallback(
     temperature?: number;
     max_tokens?: number;
     signal?: AbortSignal;
-    timeoutMs?: number;
+    onFallback?: () => void;
   }
 ): Promise<{ text: string; modelUsed: string }> {
   let retryCount = 0;
@@ -29,7 +29,6 @@ export async function withModelFallback(
         temperature: options?.temperature,
         max_tokens: options?.max_tokens,
         signal: options?.signal,
-        timeoutMs: options?.timeoutMs,
       });
 
       return { text, modelUsed: currentModel };
@@ -59,6 +58,10 @@ export async function withModelFallback(
           timeoutCount,
         },
       });
+
+      if (options?.onFallback) {
+        options.onFallback();
+      }
     }
   }
 
@@ -67,7 +70,11 @@ export async function withModelFallback(
 }
 
 export function getChatModel(): string[] {
-  return getModelFallbackChain("CHAT_FAST");
+  return getModelFallbackChain("CHAT_PRIMARY");
+}
+
+export function getChillModel(): string[] {
+  return getModelFallbackChain("CHAT_CHILL");
 }
 
 export function getReflectionModel(): string[] {
@@ -76,4 +83,9 @@ export function getReflectionModel(): string[] {
 
 export function getSafetyModel(): string[] {
   return getModelFallbackChain("SAFETY_EVALUATOR");
+}
+
+/** Fast single-model chain for preflight safety checks — no slow free-tier fallbacks. */
+export function getSafetyQuickModel(): string[] {
+  return getModelFallbackChain("SAFETY_QUICK");
 }

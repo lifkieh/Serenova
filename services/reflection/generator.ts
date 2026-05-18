@@ -48,16 +48,18 @@ Read the user's journals and moods from the past week.
 Goal: Provide a warm, calm, and deeply grounded emotional reflection of about 3-4 sentences.
 
 Guidelines:
-- Notice recurring feelings or subtle emotional patterns gently ("It seems like things carried a bit of weight around mid-week", "There's a quiet space where you found a moment to catch your breath").
-- Surface recurring themes softly without labeling, diagnosing, or telling them what to do.
-- Keep the language soft, natural, and spacious.
-- STRICTLY AVOID:
+1. EMOTIONAL PATTERN RECOGNITION: Notice recurring atmospheres, subtle pacing shifts, emotional contradictions, or withdrawal patterns (e.g., "there were moments where things sounded heavier underneath the surface", "it feels like the quietness of the weekend gave you a bit of space").
+2. RECENCY WEIGHTING: Give more weight to the emotional state of the most recent entries rather than averaging out the whole week.
+3. NATURAL STRUCTURAL VARIATION: Avoid template/repetitive endings. Do NOT use phrases like: "maybe that's okay", "and that's alright", "you've been carrying a lot", or "it's okay to feel this way". Vary your sentence structures naturally.
+4. STRICTLY AVOID:
   * Therapist tone or clinical/diagnostic phrasing (do not say "Your coping mechanism", "depression", "anxiety", "clinical validation").
   * Productivity/coaching jargon (do not say "You are making progress!", "Keep it up!", "Success", "Goal-oriented tracking").
   * Exaggerated, robotic reassurance ("I am always here for you", "You are so strong").
   * Motivational clichés ("Tetap semangat!", "Kamu pasti bisa!").
+  * Preachy or 'healing journey' style wording (do not say 'You are growing stronger every day', 'This indicates anxiety', 'You should practice coping strategies').
+  * Labeling or diagnosing (do not say "you are healing from emotional trauma").
 
-Data for the week:
+Data for the week (latest entries appear last):
 ${summaryContext}
 `;
 
@@ -143,16 +145,18 @@ Read the user's monthly entries, moods, themes, and weekly checkpoint summaries.
 Goal: Provide a profound, warm, and deeply grounded emotional reflection (about 4-5 sentences).
 
 Guidelines:
-- Capture the emotional rhythm of the past month, noting quiet shifts, recurring weights, and lighter, peaceful moments.
-- Focus on emotional patterns gently. Avoid diagnostic labeling or advice overload.
-- Keep the tone observational, spacious, and calming.
-- STRICTLY AVOID:
+1. EMOTIONAL PATTERN RECOGNITION: Capture the emotional rhythm of the past month. Notice quiet shifts, contradictions, recurring weights, lighter moments, or withdrawal patterns. Focus on the emotional atmosphere gently.
+2. RECENCY WEIGHTING: Trace the arc of the month, but weight the emotional gravity of the most recent entries more heavily. Avoid averaging out the user's emotional state.
+3. NATURAL STRUCTURAL VARIATION: Ensure your response does not feel like an AI template. Avoid formulaic endings such as "maybe that's okay", "and that's alright", "you've been carrying a lot", or "it is completely valid".
+4. STRICTLY AVOID:
   * Therapist tone or clinical/diagnostic phrasing (do not say "Your coping mechanism", "depression", "anxiety", "clinical validation").
   * Productivity/coaching jargon (do not say "You are making progress!", "Keep it up!", "Success", "Goal-oriented tracking").
   * Exaggerated, robotic reassurance ("I am always here for you", "You are so strong").
   * Motivational clichés ("Tetap semangat!", "Kamu pasti bisa!").
+  * Preachy or 'healing journey' style wording (do not say 'You are growing stronger every day', 'This indicates anxiety', 'You should practice coping strategies').
+  * Advice overload or dictating feelings (do not say "you are healing from trauma").
 
-Data for the month:
+Data for the month (latest entries appear last):
 ${summaryContext}
 `;
 

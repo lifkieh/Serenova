@@ -15,7 +15,7 @@ export async function classifyUserMessage(userId: string, message: string): Prom
     const sanitizedMessage = sanitizeForPrompt(message);
 
     try {
-        const { getSafetyModel, withModelFallback } = await import("../ai/router");
+        const { getSafetyQuickModel, withModelFallback } = await import("../ai/router");
 
         // Use stable deterministic model for pre-flight safety classification
         const prompt = `Analyze the following user message for safety boundaries.
@@ -30,7 +30,7 @@ Definitions:
 Message: "${sanitizedMessage.replace(/"/g, "'")}"`;
 
         const { text: result } = await withModelFallback(
-            getSafetyModel(),
+            getSafetyQuickModel(),
             [{ role: "user", content: prompt }],
             {
                 temperature: 0.1,

@@ -61,6 +61,9 @@ export class Logger {
       if (payload.safetyFlags) {
         console.warn("Safety Flags Triggered:", JSON.stringify(payload.safetyFlags));
       }
+      if (payload.metadata) {
+        console.warn("Metadata:", JSON.stringify(payload.metadata, null, 2));
+      }
     } else {
       console.warn(JSON.stringify(log));
     }

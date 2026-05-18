@@ -127,37 +127,22 @@ export async function DELETE(
   const supabase = getSupabase();
 
   try {
-    // 1. Fetch current conversation to understand its state
-    const { data: conversation, error: fetchError } = await supabase
+    // 1. Delete associated messages first
+    await supabase
+      .from("messages")
+      .delete()
+      .eq("conversation_id", id)
+      .eq("user_id", userId);
+
+    // 2. Hard delete conversation
+    const { error: deleteError } = await supabase
       .from("conversations")
-      .select("title")
-      .eq("id", id)
-      .eq("user_id", userId)
-      .single();
-
-    if (fetchError || !conversation) {
-      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
-    }
-
-    const currentTitle = conversation.title || "New Conversation";
-    let cleanTitle = currentTitle
-      .replace("[ARCHIVED] ", "")
-      .replace("[DELETED] ", "");
-
-    const finalTitle = `[DELETED] ${cleanTitle}`;
-
-    // Soft delete
-    const { error: updateError } = await supabase
-      .from("conversations")
-      .update({
-        title: finalTitle,
-        updated_at: new Date().toISOString(),
-      })
+      .delete()
       .eq("id", id)
       .eq("user_id", userId);
 
-    if (updateError) {
-      throw updateError;
+    if (deleteError) {
+      throw deleteError;
     }
 
     Logger.info({
@@ -167,7 +152,7 @@ export async function DELETE(
       metadata: { conversationId: id },
     });
 
-    return NextResponse.json({ success: true, message: "Conversation soft deleted" });
+    return NextResponse.json({ success: true, message: "Conversation permanently deleted" });
   } catch (error: any) {
     Logger.error({
       requestId,
@@ -176,6 +161,6 @@ export async function DELETE(
       error: error.message,
       stack: error.stack,
     });
-    return NextResponse.json({ error: "Failed to delete conversation" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete conversation permanently" }, { status: 500 });
   }
 }

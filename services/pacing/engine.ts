@@ -10,28 +10,28 @@ type PacingHint = {
 };
 
 const PACING_MAP: Record<string, PacingHint> = {
-    tired: {
-        promptSuffix: "The user seems exhausted. Keep responses shorter and calmer. Don't ask too many questions. Less is more.",
-        uiHint: "subdued",
-    },
-    exhausted: {
-        promptSuffix: "The user seems exhausted. Keep responses shorter and calmer. Don't ask too many questions. Less is more.",
+    drained: {
+        promptSuffix: "The user seems drained. Keep responses shorter and calmer. Use gentle pacing, low stimulation, and avoid asking questions. Less is more.",
         uiHint: "subdued",
     },
     overwhelmed: {
-        promptSuffix: "The user feels overwhelmed. Use simpler sentence structures. Don't introduce new heavy topics. Be present, not probing.",
+        promptSuffix: "The user feels overwhelmed. Use grounding language and simpler sentence structures. Avoid cognitive overload. Be present, not probing.",
         uiHint: "gentle",
     },
-    anxious: {
-        promptSuffix: "The user seems anxious. Keep a grounded, steady tone. Avoid hypotheticals or open-ended questions that could spiral.",
+    restless: {
+        promptSuffix: "The user feels restless. Keep a grounded, steady tone. Avoid hypotheticals or open-ended questions that could spiral.",
         uiHint: "gentle",
     },
-    hopeful: {
-        promptSuffix: "The user seems in a lighter emotional space. You can be slightly more open-ended and warm, but stay grounded.",
+    thoughtful: {
+        promptSuffix: "The user is in a thoughtful space. You can offer slightly deeper reflections with a calm, observational tone.",
         uiHint: "open",
     },
-    grateful: {
-        promptSuffix: "The user is in a reflective, appreciative space. Match that energy gently without being overly enthusiastic.",
+    lonely: {
+        promptSuffix: "The user is lonely. Be warm and present, but strictly bounded. NEVER sound like a savior, do not use 'I am always here for you', and never reinforce dependency.",
+        uiHint: "gentle",
+    },
+    lighter: {
+        promptSuffix: "The user seems in a lighter emotional space. Match that energy gently without being overly enthusiastic or motivational.",
         uiHint: "open",
     },
 };

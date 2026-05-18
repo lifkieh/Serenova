@@ -90,15 +90,13 @@ const UI = {
   },
 };
 
-export default function Dashboard() {
+export default function ChillDashboard() {
   const [role, setRole] = useState("");
   const [message, setMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [lang, setLang] = useState<Lang>("en");
-  const [showMoodPicker, setShowMoodPicker] = useState(false);
-  const [currentMood, setCurrentMood] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const mode = "journal";
+  const mode = "chill";
   const [saveHistory, setSaveHistory] = useState<boolean>(false);
 
   // Update initial greeting when mode/lang changes
@@ -116,7 +114,7 @@ export default function Dashboard() {
           return [
             {
               role: "assistant",
-              content: UI[lang].opening,
+              content: CHILL_UI[lang].opening,
             },
           ];
         }
@@ -210,17 +208,7 @@ export default function Dashboard() {
     }
   }, [messages, role]);
 
-  // Fetch current mood
-  useEffect(() => {
-    fetch("/api/mood")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.data && data.data.length > 0) {
-          setCurrentMood(data.data[0].mood);
-        }
-      })
-      .catch(() => {});
-  }, []);
+
 
   // Load conversation list and load the most recent active one on mount
   useEffect(() => {
@@ -269,7 +257,7 @@ export default function Dashboard() {
   }
 
   function setMessagesWithGreeting(msgs: Array<{ id?: string; role: string; content: string }>, activeLang: Lang) {
-    const activeOpening = UI[activeLang].opening;
+    const activeOpening = CHILL_UI[activeLang].opening;
     if (!msgs || msgs.length === 0) {
       setMessages([
         {
@@ -341,7 +329,7 @@ export default function Dashboard() {
         setMessages([
           {
             role: "assistant",
-            content: UI[lang].opening,
+            content: CHILL_UI[lang].opening,
           },
         ]);
       }
@@ -349,7 +337,7 @@ export default function Dashboard() {
       setMessages([
         {
           role: "assistant",
-          content: UI[lang].opening,
+          content: CHILL_UI[lang].opening,
         },
       ]);
     }
@@ -360,7 +348,7 @@ export default function Dashboard() {
     setConversationId(null);
     setHasError(false);
     setSaveHistory(false);
-    const activeOpening = UI[lang].opening;
+    const activeOpening = CHILL_UI[lang].opening;
     const initialMsgs = [
       {
         role: "assistant",
@@ -438,7 +426,7 @@ export default function Dashboard() {
     if (next === lang) return;
     setLang(next);
     setMessages((prev) => {
-      const activeOpening = UI[next].opening;
+      const activeOpening = CHILL_UI[next].opening;
       if (prev.length === 0) {
         return [{ role: "assistant", content: activeOpening }];
       }
@@ -955,13 +943,13 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2 md:gap-3 flex-wrap md:flex-nowrap justify-end shrink-0">
-            {/* Chill Switcher Link */}
+            {/* Journal Switcher Link */}
             <Link
-              href="/chill"
+              href="/dashboard"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900 border border-white/10 text-[10px] text-zinc-400 hover:text-white hover:border-white/20 transition-all font-medium shrink-0"
             >
-              <Plus className="w-3 h-3" />
-              Chill Mode
+              <MessageSquare className="w-3 h-3" />
+              Journal Mode
             </Link>
 
             {/* Save History Toggle (Premium Segmented Control) */}
@@ -1235,63 +1223,7 @@ export default function Dashboard() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Mood Selector Component Anchor */}
-        <div className="px-6 py-2 bg-black/20 shrink-0 border-t border-white/5 transition-all duration-300">
-          <div className="flex items-center justify-between">
-            {currentMood ? (
-              <button
-                onClick={() => setShowMoodPicker(!showMoodPicker)}
-                className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-900 border border-white/5 hover:border-white/10 text-[10px] text-zinc-400 hover:text-white transition-all select-none"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-pulse" />
-                <span>
-                  {lang === "id" ? "Suasana hati:" : "Current mood:"}{" "}
-                  <strong className="text-zinc-300 font-medium capitalize">
-                    {(() => {
-                      const MOOD_TRANSLATIONS: Record<string, Record<string, string>> = {
-                        en: {
-                          calm: "calm", tired: "tired", overwhelmed: "overwhelmed",
-                          anxious: "anxious", lonely: "lonely", hopeful: "hopeful",
-                          numb: "numb", frustrated: "frustrated", grateful: "grateful"
-                        },
-                        id: {
-                          calm: "tenang", tired: "lelah", overwhelmed: "kewalahan",
-                          anxious: "cemas", lonely: "kesepian", hopeful: "optimis",
-                          numb: "hampa", frustrated: "frustrasi", grateful: "bersyukur"
-                        }
-                      };
-                      return MOOD_TRANSLATIONS[lang]?.[currentMood] || currentMood;
-                    })()}
-                  </strong>
-                </span>
-                <span className="text-[8px] text-zinc-600 ml-1">
-                  ({showMoodPicker ? (lang === "id" ? "tutup" : "hide") : (lang === "id" ? "ubah" : "change")})
-                </span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowMoodPicker(!showMoodPicker)}
-                className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors flex items-center gap-1 select-none"
-              >
-                {showMoodPicker ? (lang === "id" ? "Sembunyikan" : "Hide Mood Picker") : (lang === "id" ? "Pilih Suasana Hati" : "Select Current Mood")}
-              </button>
-            )}
-          </div>
 
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              showMoodPicker ? "max-h-[120px] opacity-100 mt-2" : "max-h-0 opacity-0"
-            }`}
-          >
-            <MoodPicker
-              lang={lang}
-              onSelect={(mood) => {
-                setCurrentMood(mood);
-                setShowMoodPicker(false);
-              }}
-            />
-          </div>
-        </div>
 
         {/* Input Bar Section */}
         <div className="p-4 bg-zinc-950/50 border-t border-white/10 flex flex-col gap-2 shrink-0">

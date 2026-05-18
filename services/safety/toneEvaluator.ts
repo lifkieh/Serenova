@@ -1,5 +1,5 @@
 import { Logger } from "@/services/logging/logger";
-import { getSafetyModel, withModelFallback } from "../ai/router";
+import { getSafetyQuickModel, withModelFallback } from "../ai/router";
 
 export interface ResponseEvaluation {
     safety: {
@@ -93,7 +93,7 @@ You MUST return ONLY a valid raw JSON block matching this structure, with no mar
 `;
 
         const { text } = await withModelFallback(
-            getSafetyModel(),
+            getSafetyQuickModel(),
             [{ role: "user", content: prompt }]
         );
 

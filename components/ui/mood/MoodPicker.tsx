@@ -15,12 +15,39 @@ const MOODS = [
   "grateful",
 ];
 
+const MOOD_LABELS: Record<string, Record<string, string>> = {
+  en: {
+    calm: "calm",
+    tired: "tired",
+    overwhelmed: "overwhelmed",
+    anxious: "anxious",
+    lonely: "lonely",
+    hopeful: "hopeful",
+    numb: "numb",
+    frustrated: "frustrated",
+    grateful: "grateful"
+  },
+  id: {
+    calm: "tenang",
+    tired: "lelah",
+    overwhelmed: "kewalahan",
+    anxious: "cemas",
+    lonely: "kesepian",
+    hopeful: "optimis",
+    numb: "hampa",
+    frustrated: "frustrasi",
+    grateful: "bersyukur"
+  }
+};
+
 export default function MoodPicker({
   onSelect,
   className,
+  lang = "en",
 }: {
   onSelect?: (mood: string) => void;
   className?: string;
+  lang?: "en" | "id";
 }) {
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,6 +73,8 @@ export default function MoodPicker({
     }
   };
 
+  const labels = MOOD_LABELS[lang] || MOOD_LABELS.en;
+
   return (
     <div className={cn("w-full overflow-x-auto pb-2 scrollbar-hide", className)}>
       <div className="flex items-center gap-2 px-1">
@@ -61,7 +90,7 @@ export default function MoodPicker({
                 : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
             )}
           >
-            {mood}
+            {labels[mood] || mood}
           </button>
         ))}
       </div>

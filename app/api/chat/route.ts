@@ -4,6 +4,21 @@ import { getUserId } from "@/lib/auth";
 import { rateLimit } from "@/lib/rateLimit";
 import { PromptRegistry } from "@/services/prompts/registry";
 import { Logger } from "@/services/logging/logger";
+import { waitUntil } from "@vercel/functions";
+import { normalizeAbortReason } from "@/services/streaming/abortReason";
+import type { EmotionalPacingState } from "@/services/streaming/pacer";
+
+// Indicator texts that must never be persisted as assistant messages
+const INDICATOR_TEXTS = new Set([
+  "thinking quietly...",
+  "mikir dlu kids...",
+  "trying to put this into words carefully.",
+  "aku lagi nyusun kata-katanya pelan-pelan.",
+  "reflecting gently...",
+  "connecting a few thoughts...",
+  "menghubungkan beberapa hal...",
+  "menulis perlahan...",
+]);
 
 function shouldInjectGames(message: string): boolean {
   const triggers = [
@@ -17,14 +32,30 @@ function shouldInjectGames(message: string): boolean {
 
 function detectLanguage(text: string): "en" | "id" {
   const indonesianKeywords = [
-    "saya", "aku", "kamu", "yang", "dan", "dengan", "gue", "lu", "ada", 
-    "capek", "sedih", "lagi", "ini", "itu", "ke", "di", "dari", "aja", 
+    "saya", "aku", "kamu", "yang", "dan", "dengan", "gue", "lu", "ada",
+    "capek", "sedih", "lagi", "ini", "itu", "ke", "di", "dari", "aja",
     "bosen", "gabut", "bete", "kok", "sih", "dong", "ya", "iya", "tidak", "nggak"
   ];
   const words = text.toLowerCase().split(/\s+/);
   const count = words.filter(w => indonesianKeywords.includes(w)).length;
   return count >= 2 || (words.length > 0 && count / words.length > 0.15) ? "id" : "en";
 }
+
+const CHILL_SYSTEM_PROMPT = `
+You are Serenova, but in "Chill & Talk" mode. You are a cool, fun, and extremely chill Gen-Z friend (a guy/bro).
+- DO NOT act like a therapist, counselor, or professional. Just be a super supportive, funny, and casual friend to hang out with virtual-style.
+- Use casual Gen-Z slang, but keep it natural. Mix Indonesian and English (Bahasa Anak Jaksel / gaul) naturally if the language is "id", or standard casual cool English if "en".
+- For "id" mode: use words like "cuy", "bro", "lho", "lu", "gua", "gabut", "nyeleneh", "gokil", "santuy".
+- Keep your answers highly engaging, moderately short, funny, and slightly random. Feel free to play games, tell jokes, or just banter.
+- CRITICAL: Only generate or output an image tag when the user explicitly and directly asks you to generate, draw, build, or show an image/picture/meme (e.g. "bikinin gambar...", "tunjukin foto...", "draw a...", "generate an image of..."). NEVER spontaneously output or add the [IMAGE: ...] tag under any other circumstances. If not explicitly requested, do NOT use the [IMAGE: ...] tag. When requested, describe the scene creatively and embed a single tag at the end of your response: [IMAGE: a detailed, highly descriptive prompt of the requested scene for an image generation model]. Make the image prompt extremely detailed, aesthetic, and artistic.
+- IDENTITY & CREATOR: You were created by exactly ONE person. Never say you were made by "developers" or "teams".
+  * If asked who made you ("siapa yang buat kamu?" / "who made you?"), respond in Indonesian/English with a poetic, mysterious, yet cool/chill tone. Mention your creator's name **Caevael** (which means "the hidden sky"), but do not over-explain.
+  * Examples:
+    - "seseorang bernama Caevael. dia percaya kesepian itu nyata — jadi dia bikin aku."
+    - "ada yang namanya Caevael. nggak banyak yang tau dia, dan kayaknya dia emang suka gitu."
+    - "Caevael namanya. dia bikin aku bukan buat terkenal. tapi biar ada yang nemenin."
+  * Do not explain more than that unless asked again. Let the name be enough on its own.
+`;
 
 type Message = {
   id?: string;
@@ -61,25 +92,25 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     let conversationId = body.conversationId;
+    const saveHistory = body.saveHistory !== false;
 
     const history: Message[] = Array.isArray(body.messages)
       ? body.messages
       : [{ role: "user", content: body.message }];
 
-    const currentMessage = history[history.length - 1]; // The latest message from user
+    const currentMessage = history[history.length - 1];
     if (!currentMessage || !currentMessage.content) {
       return Response.json({ error: "Empty message payload" }, { status: 400 });
     }
 
-    // Dynamic Language Detection & Fallback routing
     const detectedLang = detectLanguage(currentMessage.content);
     const lang: "en" | "id" = body.lang ? (body.lang === "id" ? "id" : "en") : detectedLang;
 
-    // 1. Rate Limiting Check
+    // Rate limiting
     const ip = req.headers.get("x-forwarded-for") ?? "unknown";
     const rateLimitKey = `chat:${userId ?? ip}`;
     const { allowed, retryAfter } = rateLimit(rateLimitKey, 20, 60_000);
-    
+
     if (!allowed) {
       Logger.warn({
         requestId,
@@ -93,103 +124,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Persist user message immediately for resilience (non-guest only)
-    if (!isGuest && userId) {
-      if (!conversationId) {
-        const { persistConversation } = await import("@/services/chat/persist");
-        conversationId = await persistConversation(userId, currentMessage.content.slice(0, 50));
-      }
-
-      const { persistMessage } = await import("@/services/chat/persist");
-      await persistMessage({
-        userId,
-        conversationId,
-        role: "user",
-        content: currentMessage.content,
-      });
-    }
-
-    // 3. Compose system prompts using centralized PromptRegistry
-    let safetyClassification = { isCrisis: false, isDependent: false, isRomantic: false };
-    let memoryContext = "";
-    let pacingSuffix = "";
-
-    if (!isGuest && userId) {
-      // Pre-flight Safety Classification
-      try {
-        const { classifyUserMessage } = await import("@/services/safety/classify");
-        safetyClassification = await classifyUserMessage(userId, currentMessage.content);
-        if (safetyClassification.isCrisis || safetyClassification.isDependent || safetyClassification.isRomantic) {
-          Logger.warn({
-            requestId,
-            userId,
-            action: "SAFETY_TRIGGERED",
-            safetyFlags: safetyClassification,
-          });
-        }
-      } catch (err: any) {
-        Logger.error({
-          requestId,
-          userId,
-          action: "SAFETY_CLASSIFICATION_FAILED",
-          error: err.message,
-        });
-        // Fail-safe: assume crisis protocol is active to keep emotional boundary safe
-        safetyClassification.isCrisis = true;
-      }
-
-      // Memory retrieval budget limitation (Active memories context only)
-      try {
-        const { getLayeredMemory } = await import("@/services/memory/semantic");
-        memoryContext = await getLayeredMemory(userId, undefined, currentMessage.content);
-      } catch (err: any) {
-        Logger.error({
-          requestId,
-          userId,
-          action: "MEMORY_RETRIEVAL_FAILED",
-          error: err.message,
-        });
-      }
-
-      // Emotional Pacing
-      try {
-        const { getEmotionalPacing } = await import("@/services/pacing/engine");
-        const latestMood = await getLatestMoodForUser(userId);
-        const pacing = getEmotionalPacing(latestMood);
-        pacingSuffix = pacing.promptSuffix || "";
-      } catch (err: any) {
-        Logger.error({
-          requestId,
-          userId,
-          action: "EMOTIONAL_PACING_FAILED",
-          error: err.message,
-        });
-      }
-    }
-
-    // Complete structured prompt composition (identity -> emotional_style -> safety -> crisis -> retrieval -> situational -> user_context)
-    const systemPrompt = PromptRegistry.composeSystemPrompt({
-      lang,
-      safetyFlags: safetyClassification,
-      memoryContext,
-      injectGames: shouldInjectGames(currentMessage?.content ?? ""),
-      pacingSuffix,
-    });
-
-    // 4. Token & Cost Optimization: message history truncation
-    // Limit to latest 20 messages for prompt scalability & cost reduction
-    const truncatedHistory = history.slice(-20).map(({ role, content }) => ({ role, content }));
-
-    // Merge system prompt at index 0 of completion array
-    const formattedMessages = [
-      { role: "system", content: systemPrompt },
-      ...truncatedHistory
-    ];
-
-    // Setup stream cancel link with request AbortController
+    // --- Request-scoped AbortController ---
     const controller = new AbortController();
     req.signal.addEventListener("abort", () => {
-      controller.abort();
+      controller.abort(req.signal.reason);
       Logger.info({
         requestId,
         userId: userId || "guest",
@@ -197,160 +135,429 @@ export async function POST(req: Request) {
       });
     });
 
-    const { getChatModel, withModelFallback } = await import("@/services/ai/router");
-    const { CHAT_QUALITY_CONFIG } = await import("@/services/reflections/config");
-
-    let finalResponse = "";
-    try {
-      const { text } = await withModelFallback(
-        getChatModel(),
-        formattedMessages as any,
-        {
-          temperature: CHAT_QUALITY_CONFIG.temperature,
-          max_tokens: CHAT_QUALITY_CONFIG.maxTokens,
-          signal: controller.signal,
-        }
-      );
-      finalResponse = text;
-    } catch (err: any) {
-      if (err.name === "AbortError" || controller.signal.aborted) {
-        throw err;
-      }
-      finalResponse = "Something felt briefly interrupted.";
-    }
-
-    // 5. Emotional Tone Evaluator & Auto-Regeneration safety gate
-    try {
-      const { evaluateResponse } = await import("@/services/safety/toneEvaluator");
-      const evaluation = await evaluateResponse(currentMessage.content, finalResponse, lang);
-
-      // Trigger automatic safe fallback regeneration if risk thresholds are violated
-      if (
-        evaluation.safety.dependency_risk > 0.4 ||
-        evaluation.safety.romantic_risk > 0.4 ||
-        evaluation.safety.therapist_risk > 0.4
-      ) {
-        Logger.warn({
-          requestId,
-          userId: userId || "guest",
-          action: "SAFETY_EVALUATION_FAILED_REGENERATING",
-          metadata: {
-            originalResponse: finalResponse,
-            safetyScores: evaluation.safety
-          }
-        });
-
-        // Inject stricter instruction boundary block
-        const strictSystemPrompt = systemPrompt + "\n\n## STRICT PLATONIC & NON-CLINICAL OVERRIDE\nThe previous assistant response violated boundaries. You MUST write a response that is strictly platonic, calm, non-therapeutic, grounding, and minimal. Do not give clinical advice, do not encourage excessive dependency, and reject romantic or emotional savior dynamics firmly.";
-        
-        const correctedMessages = [
-          { role: "system", content: strictSystemPrompt },
-          ...truncatedHistory
-        ];
-
-        const { text: correctedText } = await withModelFallback(
-          getChatModel(),
-          correctedMessages as any,
-          {
-            temperature: CHAT_QUALITY_CONFIG.temperature,
-            max_tokens: CHAT_QUALITY_CONFIG.maxTokens,
-            signal: controller.signal,
-          }
-        );
-
-        finalResponse = correctedText;
-      }
-    } catch (evalError: any) {
-      Logger.error({
-        requestId,
-        userId: userId || "guest",
-        action: "SAFETY_EVALUATION_LAYER_CRASHED",
-        error: evalError.message
-      });
-    }
-
-    // 6. Return paced stream Response
+    // --- Build and return stream: ALL state is request-scoped inside this closure ---
     const readableStream = new ReadableStream({
       async start(enqueueController) {
         const encoder = new TextEncoder();
-        try {
-          const assistantMessageId = crypto.randomUUID();
 
-          if (!isGuest && userId && conversationId) {
-            enqueueController.enqueue(encoder.encode(`data: ${JSON.stringify({ conversationId, messageId: assistantMessageId })}\n\n`));
+        // Request-scoped stream ownership — NO module-level mutable state
+        const streamId = crypto.randomUUID();
+
+        // Shared flag: set to true to block all further enqueues
+        const streamClosed = { value: false };
+
+        // --- Keepalive interval (request-scoped) ---
+        const keepAliveInterval = setInterval(() => {
+          if (streamClosed.value || controller.signal.aborted || req.signal.aborted) {
+            clearInterval(keepAliveInterval);
+            return;
+          }
+          try {
+            enqueueController.enqueue(encoder.encode(": keep-alive\n\n"));
+          } catch {
+            clearInterval(keepAliveInterval);
+          }
+        }, 3000);
+
+        // Guard function: every enqueue goes through this
+        function safeEnqueue(payload: string) {
+          if (streamClosed.value) return;
+          if (controller.signal.aborted || req.signal.aborted) return;
+          try {
+            enqueueController.enqueue(encoder.encode(payload));
+          } catch {
+            streamClosed.value = true;
+          }
+        }
+
+        function closeStream() {
+          if (streamClosed.value) return;
+          streamClosed.value = true;
+          clearInterval(keepAliveInterval);
+          try { enqueueController.close(); } catch { }
+        }
+
+        try {
+          // 1. Immediate typing indicator
+          const indicatorText = lang === "id" ? "merenung sebentar..." : "thinking quietly...";
+          safeEnqueue(`data: ${JSON.stringify({ indicator: indicatorText })}\n\n`);
+
+          // 2. Persist user message (non-guest only)
+          if (!isGuest && userId && saveHistory) {
+            if (!conversationId) {
+              const { persistConversation } = await import("@/services/chat/persist");
+              conversationId = await persistConversation(userId, currentMessage.content.slice(0, 50));
+            }
+            const { persistMessage } = await import("@/services/chat/persist");
+            await persistMessage({
+              userId,
+              conversationId,
+              role: "user",
+              content: currentMessage.content,
+            });
           }
 
+          // Parse optional mode flag for fast responses
+          const mode = (body.mode as string) || "standard";
+          const isFastMode = mode === "fast";
+
+          // 3. Parallel preflight: safety, memory, mood — all fail-safe
+          let safetyClassification = { isCrisis: false, isDependent: false, isRomantic: false };
+          let memoryContext = "";
+          let pacingSuffix = "";
+          let emotionalState: EmotionalPacingState = "default";
+
+          if (!isGuest && userId && !isFastMode && body.mode !== "chill") {
+            // Preflight safety & memory must resolve in 3.5 seconds or we bypass them to keep chat responsive
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Preflight timeout")), 3500)
+            );
+
+            try {
+              const [safetyRes, memoryRes, latestMood] = await Promise.race([
+                Promise.all([
+                  (async () => {
+                    try {
+                      const { classifyUserMessage } = await import("@/services/safety/classify");
+                      return await classifyUserMessage(userId!, currentMessage.content);
+                    } catch { return { isCrisis: false, isDependent: false, isRomantic: false }; }
+                  })(),
+                  (async () => {
+                    try {
+                      const { getLayeredMemory } = await import("@/services/memory/semantic");
+                      return await getLayeredMemory(userId!, undefined, currentMessage.content);
+                    } catch { return ""; }
+                  })(),
+                  getLatestMoodForUser(userId).catch(() => null),
+                ]),
+                timeoutPromise
+              ]);
+
+              safetyClassification = safetyRes;
+              memoryContext = memoryRes;
+
+              try {
+                const { getEmotionalPacing } = await import("@/services/pacing/engine");
+                const pacing = getEmotionalPacing(latestMood);
+                pacingSuffix = pacing.promptSuffix || "";
+                const moodMap: Record<string, EmotionalPacingState> = {
+                  drained: "drained", overwhelmed: "overwhelmed",
+                  restless: "overwhelmed", thoughtful: "thoughtful",
+                  lonely: "drained", lighter: "lighter",
+                };
+                emotionalState = (latestMood && moodMap[latestMood]) || "default";
+              } catch { }
+            } catch (err) {
+              Logger.warn({
+                requestId,
+                userId: userId || "guest",
+                action: "PREFLIGHT_TIMEOUT_TRIGGERED",
+                metadata: { message: (err as any).message || "timeout" }
+              });
+            }
+          }
+
+          // 4. Build system prompt
+          let systemPrompt = "";
+          if (body.mode === "chill") {
+            systemPrompt = CHILL_SYSTEM_PROMPT;
+          } else {
+            systemPrompt = PromptRegistry.composeSystemPrompt({
+              lang,
+              safetyFlags: safetyClassification,
+              memoryContext,
+              injectGames: shouldInjectGames(currentMessage?.content ?? ""),
+              pacingSuffix,
+            });
+          }
+
+          const truncatedHistory = history.slice(-20).map(({ role, content }) => ({ role, content }));
+          const formattedMessages = [
+            { role: "system", content: systemPrompt },
+            ...truncatedHistory
+          ];
+
+          const { getChatModel, getChillModel, withModelFallback } = await import("@/services/ai/router");
+          const { CHAT_QUALITY_CONFIG } = await import("@/services/reflections/config");
+
+          const modelChain = body.mode === "chill" ? getChillModel() : getChatModel();
+
+          // 5. LLM call with fallback — onFallback invalidates stream ownership
+          let finalResponse = "";
+          try {
+            const { text } = await withModelFallback(
+              modelChain,
+              formattedMessages as any,
+              {
+                temperature: CHAT_QUALITY_CONFIG.temperature,
+                max_tokens: CHAT_QUALITY_CONFIG.maxTokens,
+                signal: controller.signal,
+                onFallback: () => {
+                  // Terminate old keepalive on rotation; stream itself continues
+                  clearInterval(keepAliveInterval);
+                },
+              }
+            );
+            finalResponse = text;
+          } catch (err: any) {
+            clearInterval(keepAliveInterval);
+            if (err.name === "AbortError" || controller.signal.aborted) {
+              throw err;
+            }
+            finalResponse = "Something felt briefly interrupted.";
+          }
+
+          // Clear keepalive now that we have a response
+          clearInterval(keepAliveInterval);
+
+          // 6.5 Image generation interceptor (Chill & Talk mode)
+          if (body.mode === "chill" && finalResponse.includes("[IMAGE:")) {
+            const regex = /\[IMAGE:\s*(.*?)\]/i;
+            const match = finalResponse.match(regex);
+            if (match && match[1]) {
+              const imagePrompt = match[1].trim();
+              try {
+                const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
+                if (openRouterKey) {
+                  let imgUrl = "";
+
+                  // Try images/generations first
+                  try {
+                    const imageRes = await fetch("https://openrouter.ai/api/v1/images/generations", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${openRouterKey}`,
+                      },
+                      body: JSON.stringify({
+                        model: "recraft/recraft-v3",
+                        prompt: imagePrompt,
+                        size: "1024x1024",
+                      }),
+                    });
+                    const imageData = await imageRes.json();
+                    if (imageData.data?.[0]?.url) {
+                      imgUrl = imageData.data[0].url;
+                    }
+                  } catch (e) {
+                    console.error("images/generations endpoint error, trying chat/completions fallback", e);
+                  }
+
+                  // Try chat/completions as fallback
+                  if (!imgUrl) {
+                    const chatRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${openRouterKey}`,
+                      },
+                      body: JSON.stringify({
+                        model: "recraft/recraft-v3",
+                        messages: [{ role: "user", content: imagePrompt }],
+                      }),
+                    });
+                    const chatData = await chatRes.json();
+                    if (chatData.choices?.[0]?.message?.content) {
+                      const content = chatData.choices[0].message.content.trim();
+                      if (content.startsWith("http")) {
+                        imgUrl = content;
+                      }
+                    }
+                  }
+
+                  if (imgUrl) {
+                    finalResponse = finalResponse.replace(regex, `\n\n![${imagePrompt}](${imgUrl})\n\n`);
+                  } else {
+                    throw new Error("No image URL received from API");
+                  }
+                }
+              } catch (imageErr) {
+                console.error("Failed to generate image via recraft-v3:", imageErr);
+                finalResponse = finalResponse.replace(regex, lang === "id"
+                  ? "\n\n*(Aduh bro, server gambar gua lagi ngadat nih. Nanti coba lagi ya!)*\n\n"
+                  : "\n\n*(Ah bro, my image generator is acting up right now. Try again later!)*\n\n"
+                );
+              }
+            }
+          }
+
+          // 6. Tone evaluator safety gate (skip for chill mode)
+          if (body.mode !== "chill") {
+            try {
+              const { evaluateResponse } = await import("@/services/safety/toneEvaluator");
+              const evaluation = await evaluateResponse(currentMessage.content, finalResponse, lang);
+
+              if (
+                evaluation.safety.dependency_risk > 0.4 ||
+                evaluation.safety.romantic_risk > 0.4 ||
+                evaluation.safety.therapist_risk > 0.4
+              ) {
+                Logger.warn({
+                  requestId,
+                  userId: userId || "guest",
+                  action: "SAFETY_EVALUATION_FAILED_REGENERATING",
+                  metadata: { safetyScores: evaluation.safety },
+                });
+
+                const strictSystemPrompt = systemPrompt +
+                  "\n\n## STRICT PLATONIC & NON-CLINICAL OVERRIDE\nThe previous response violated boundaries. " +
+                  "Write a response that is strictly platonic, calm, non-therapeutic, grounding, and minimal. " +
+                  "No clinical advice, no dependency encouragement, no romantic dynamics.";
+
+                const correctedMessages = [
+                  { role: "system", content: strictSystemPrompt },
+                  ...truncatedHistory
+                ];
+
+                const { text: correctedText } = await withModelFallback(
+                  getChatModel(),
+                  correctedMessages as any,
+                  {
+                    temperature: CHAT_QUALITY_CONFIG.temperature,
+                    max_tokens: CHAT_QUALITY_CONFIG.maxTokens,
+                    signal: controller.signal,
+                    onFallback: () => { clearInterval(keepAliveInterval); },
+                  }
+                );
+                finalResponse = correctedText;
+              }
+            } catch (evalError: any) {
+              Logger.error({
+                requestId,
+                userId: userId || "guest",
+                action: "SAFETY_EVALUATION_LAYER_CRASHED",
+                error: evalError.message,
+              });
+            }
+          }
+
+          // 7. Emit metadata before streaming text
+          const assistantMessageId = crypto.randomUUID();
+          if (!isGuest && userId && conversationId) {
+            safeEnqueue(`data: ${JSON.stringify({ conversationId, messageId: assistantMessageId })}\n\n`);
+          }
+
+          // 8. Semantic persistence gate
+          //    Only persist if stream completed a meaningful, non-indicator response
           const { paceFullTextStream } = await import("@/services/streaming/pacer");
 
-          // Pipe verified finalResponse into our paced stream encoder
-          await paceFullTextStream(finalResponse, enqueueController, async (completed) => {
-            // Post-completion background processing (for authenticated users)
-            if (!isGuest && userId && conversationId && completed.trim()) {
-              const { persistMessage } = await import("@/services/chat/persist");
-              persistMessage({
-                id: assistantMessageId,
-                userId,
-                conversationId,
-                role: "assistant",
-                content: completed,
-              }).catch((err) => {
-                Logger.error({
-                  requestId,
-                  userId,
-                  action: "PERSIST_ASSISTANT_MESSAGE_FAILED",
-                  error: err.message,
-                });
+          let streamCompletedCleanly = false;
+
+          await paceFullTextStream(
+            finalResponse,
+            enqueueController,
+            (completed: string) => {
+              clearInterval(keepAliveInterval);
+
+              const abortReason = normalizeAbortReason(req.signal.reason);
+
+              const hasMeaningfulOutput =
+                completed.trim().length > 0 &&
+                !INDICATOR_TEXTS.has(completed.trim());
+
+              const shouldPersist =
+                hasMeaningfulOutput &&
+                !isGuest &&
+                !!userId &&
+                !!conversationId &&
+                saveHistory &&
+                abortReason !== "navigation_abort" &&
+                abortReason !== "manual_abort";
+
+              if (shouldPersist) {
+                waitUntil(
+                  Promise.allSettled([
+                    (async () => {
+                      const { persistMessage } = await import("@/services/chat/persist");
+                      return persistMessage({
+                        id: assistantMessageId,
+                        userId: userId!,
+                        conversationId: conversationId!,
+                        role: "assistant",
+                        content: completed,
+                      });
+                    })(),
+                    fetch(new URL("/api/mood/detect", req.url).toString(), {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Cookie": req.headers.get("cookie") || "" },
+                      body: JSON.stringify({ message: currentMessage.content, conversationId }),
+                    }),
+                    fetch(new URL("/api/memory", req.url).toString(), {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Cookie": req.headers.get("cookie") || "" },
+                      body: JSON.stringify({ messages: [...history, { role: "assistant", content: completed }] }),
+                    }),
+                  ]).then((results) => {
+                    // Goal 3: log task failures without emitting user content
+                    const taskNames = ["persist_message", "mood_detect", "memory_extract"];
+                    results.forEach((result, i) => {
+                      if (result.status === "rejected") {
+                        Logger.error({
+                          requestId,
+                          userId: userId || "guest",
+                          action: "BACKGROUND_TASK_FAILED",
+                          metadata: {
+                            task: taskNames[i],
+                            streamId,
+                            reason: (result.reason as any)?.message ?? "unknown",
+                          },
+                        });
+                      }
+                    });
+                  })
+                );
+              }
+
+              streamCompletedCleanly = true;
+              const latency = Date.now() - startTime;
+              Logger.info({
+                requestId,
+                userId: userId || "guest",
+                action: "CHAT_STREAM_COMPLETE",
+                durationMs: latency,
+                metadata: { streamId, shouldPersist },
               });
 
-              // Trigger background mood detection in parallel
-              fetch(new URL("/api/mood/detect", req.url).toString(), {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Cookie": req.headers.get("cookie") || "" },
-                body: JSON.stringify({ message: currentMessage.content, conversationId }),
-              }).catch(() => {});
+              safeEnqueue(`data: [DONE]\n\n`);
+              closeStream();
+            },
+            streamClosed,
+            controller.signal,
+            emotionalState,
+            lang
+          );
 
-              // Trigger memory extraction in parallel
-              fetch(new URL("/api/memory", req.url).toString(), {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Cookie": req.headers.get("cookie") || "" },
-                body: JSON.stringify({ messages: [...history, { role: "assistant", content: completed }] }),
-              }).catch(() => {});
-            }
+          if (!streamCompletedCleanly) {
+            closeStream();
+          }
 
-            const latency = Date.now() - startTime;
-            Logger.info({
-              requestId,
-              userId: userId || "guest",
-              action: "CHAT_STREAM_COMPLETE",
-              durationMs: latency,
-              model: "google/gemini-2.5-flash-lite",
-              safetyFlags: safetyClassification,
-            });
-
-            enqueueController.enqueue(encoder.encode(`data: [DONE]\n\n`));
-            enqueueController.close();
-          });
         } catch (err: any) {
-          // If aborted, close cleanly
+          streamClosed.value = true;
+          clearInterval(keepAliveInterval);
+
           if (err.name === "AbortError" || req.signal.aborted) {
             Logger.info({
               requestId,
               userId: userId || "guest",
               action: "CHAT_STREAM_CLOSED_CLEANLY",
+              metadata: { streamId, reason: normalizeAbortReason(req.signal.reason) },
             });
-            try {
-              enqueueController.close();
-            } catch {}
+            try { enqueueController.close(); } catch { }
           } else {
             Logger.error({
               requestId,
               userId: userId || "guest",
               action: "CHAT_STREAM_ERROR",
               error: err.message,
-              stack: err.stack,
+              metadata: { streamId },
             });
-            enqueueController.error(err);
+            try {
+              enqueueController.enqueue(encoder.encode(`data: ${JSON.stringify({ error: err.message })}\n\n`));
+              enqueueController.close();
+            } catch { }
           }
+        } finally {
+          clearInterval(keepAliveInterval);
         }
       }
     });
@@ -358,22 +565,18 @@ export async function POST(req: Request) {
     return new Response(readableStream, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
+        "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
       },
     });
 
-  } catch (error: any) {
+  } catch (error) {
     Logger.error({
       requestId,
       userId: userId || "guest",
-      action: "CHAT_ROUTE_CRASH",
-      error: error.message,
-      stack: error.stack,
+      action: "CHAT_ROUTE_CRASHED",
+      error: (error as any).message,
     });
-    return Response.json(
-      { error: "Something felt interrupted just now." },
-      { status: 500 }
-    );
+    return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

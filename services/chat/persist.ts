@@ -31,7 +31,7 @@ export async function persistMessage(params: {
     const { error } = await supabase
         .from("messages")
         .insert([{
-            id: params.id,
+            id: params.id ?? crypto.randomUUID(),
             user_id: params.userId,
             conversation_id: params.conversationId,
             role: params.role,

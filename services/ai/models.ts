@@ -1,44 +1,125 @@
 /**
  * Centralized Model Strategy Groups for OpenRouter
  * Enforces strong typing and clear fallback hierarchies.
+ *
+ * Model Selection Rationale (aligned with Serenova's purpose):
+ * ─────────────────────────────────────────────────────────────
+ * Serenova is a calm, late-night reflective companion.
+ * Models are chosen for: instruction adherence, low hallucination,
+ * emotional nuance, Indonesian+English fluency, and throughput reliability.
+ *
+ * - gpt-oss-120b:free    → 117B MoE, 5.1B active. Strongest instruction compliance
+ *                           and lowest hallucination rate among free models.
+ *                           150B token throughput = extremely reliable.
+ * - qwen3-next-80b:free  → 80B MoE, 3B active. No thinking traces, clean output.
+ *                           262K context (best for long conversations).
+ *                           Strong Asian-language training = best Indonesian fluency.
+ * - gemini-2.5-flash-lite → Fast, reliable paid-tier backup. Always available.
  */
 
-export const CHAT_FAST: string[] = [
-  "qwen/qwen3-next-80b-a3b-instruct:free"
+// Primary chat models — ordered by Serenova alignment fit (Journal/Reflective mode)
+export const CHAT_PRIMARY: string[] = [
+  "openai/gpt-oss-120b",
+  "google/gemini-3.1-pro-preview",
+  "google/gemini-2.5-flash-lite"
 ];
 
-export const CHAT_BALANCED: string[] = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "openai/gpt-oss-120b:free"
+// Chill & Talk mode models — separate casual/Gen-Z supportive chain of models
+// Completely disjoint from CHAT_PRIMARY and contains no Gemini models
+export const CHAT_CHILL: string[] = [
+  "meta-llama/llama-3.3-70b-instruct",
+  "x-ai/grok-3-mini",
+  "mistralai/mistral-small-3.2-24b-instruct-2506",
+  "mistralai/mistral-7b-instruct-v0.1",
+  "perplexity/sonar"
 ];
 
+// Reflection generation — needs deep instruction adherence for persona consistency
 export const REFLECTION_PREMIUM: string[] = [
-  "openai/gpt-oss-120b:free",
-  "nousresearch/hermes-3-405b-instruct:free"
+  "openai/gpt-oss-120b",
+  "google/gemini-2.5-flash-lite"
 ];
 
+// Safety evaluation — needs reliable, fast, deterministic JSON output
 export const SAFETY_EVALUATOR: string[] = [
-  "qwen/qwen3-next-80b-a3b-instruct:free"
+  "google/gemini-2.5-flash-lite"
 ];
 
 export const EMBEDDING_MODEL = "text-embedding-004";
 
-export type ModelGroup = "CHAT_FAST" | "CHAT_BALANCED" | "REFLECTION_PREMIUM" | "SAFETY_EVALUATOR";
+// Fast, reliable models only — no free-tier fallbacks that timeout.
+// Used for preflight safety classification and tone evaluation.
+export const SAFETY_QUICK: string[] = [
+  "google/gemini-2.5-flash-lite",
+];
+
+export type ModelGroup = "CHAT_PRIMARY" | "CHAT_CHILL" | "REFLECTION_PREMIUM" | "SAFETY_EVALUATOR" | "SAFETY_QUICK";
+
+export interface ModelTimeoutMetadata {
+  firstChunkTimeoutMs: number;
+  idleTimeoutMs: number;
+}
+
+const DEFAULT_TIMEOUTS: ModelTimeoutMetadata = {
+  firstChunkTimeoutMs: 15000,
+  idleTimeoutMs: 30000,
+};
+
+const MODEL_TIMEOUT_METADATA: Record<string, ModelTimeoutMetadata> = {
+  "google/gemini-2.5-flash-lite": {
+    firstChunkTimeoutMs: 15000,
+    idleTimeoutMs: 30000,
+  },
+  "google/gemini-3.1-pro-preview": {
+    firstChunkTimeoutMs: 15000,
+    idleTimeoutMs: 30000,
+  },
+  "openai/gpt-oss-120b": {
+    firstChunkTimeoutMs: 20000,  // MoE routing may add slight cold-start
+    idleTimeoutMs: 30000,
+  },
+  "meta-llama/llama-3.3-70b-instruct": {
+    firstChunkTimeoutMs: 18000,
+    idleTimeoutMs: 30000,
+  },
+  "x-ai/grok-3-mini": {
+    firstChunkTimeoutMs: 12000,
+    idleTimeoutMs: 25000,
+  },
+  "mistralai/mistral-small-3.2-24b-instruct-2506": {
+    firstChunkTimeoutMs: 15000,
+    idleTimeoutMs: 28000,
+  },
+  "mistralai/mistral-7b-instruct-v0.1": {
+    firstChunkTimeoutMs: 15000,
+    idleTimeoutMs: 28000,
+  },
+  "perplexity/sonar": {
+    firstChunkTimeoutMs: 12000,
+    idleTimeoutMs: 25000,
+  },
+};
+
+export function getModelTimeouts(model: string): ModelTimeoutMetadata {
+  return MODEL_TIMEOUT_METADATA[model] || DEFAULT_TIMEOUTS;
+}
 
 /**
  * Get fallback chain for a model group
  */
 export function getModelFallbackChain(group: ModelGroup): string[] {
   switch (group) {
-    case "CHAT_FAST":
-      return [...CHAT_FAST, ...CHAT_BALANCED];
-    case "CHAT_BALANCED":
-      return [...CHAT_BALANCED, ...CHAT_FAST];
+    case "CHAT_PRIMARY":
+      return CHAT_PRIMARY;
+    case "CHAT_CHILL":
+      return CHAT_CHILL;
     case "REFLECTION_PREMIUM":
-      return [...REFLECTION_PREMIUM, ...CHAT_BALANCED];
+      return REFLECTION_PREMIUM;
     case "SAFETY_EVALUATOR":
-      return [...SAFETY_EVALUATOR, ...CHAT_FAST];
+      return SAFETY_EVALUATOR;
+    case "SAFETY_QUICK":
+      return SAFETY_QUICK;
     default:
-      return ["qwen/qwen3-next-80b-a3b-instruct:free"];
+      return CHAT_PRIMARY;
   }
 }

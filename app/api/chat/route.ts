@@ -7,6 +7,12 @@ import { Logger } from "@/services/logging/logger";
 import { waitUntil } from "@vercel/functions";
 import { normalizeAbortReason } from "@/services/streaming/abortReason";
 import type { EmotionalPacingState } from "@/services/streaming/pacer";
+import { BASE_ID as CHILL_BASE_ID } from "./prompts/base";
+import { SITUATIONS_ID as CHILL_SITUATIONS_ID } from "./prompts/situations";
+import { IDENTITY_ID as CHILL_IDENTITY_ID } from "./prompts/identity";
+import { BASE_EN as CHILL_BASE_EN } from "./prompts/base";
+import { SITUATIONS_EN as CHILL_SITUATIONS_EN } from "./prompts/situations";
+import { IDENTITY_EN as CHILL_IDENTITY_EN } from "./prompts/identity";
 
 // Indicator texts that must never be persisted as assistant messages
 const INDICATOR_TEXTS = new Set([
@@ -41,59 +47,7 @@ function detectLanguage(text: string): "en" | "id" {
   return count >= 2 || (words.length > 0 && count / words.length > 0.15) ? "id" : "en";
 }
 
-const CHILL_SYSTEM_PROMPT = `
-You are Serenova, but in "Chill & Talk" mode. You are a cool, fun, and extremely chill Gen-Z friend (a guy/bro).
-- DO NOT act like a therapist, counselor, or professional. Just be a super supportive, funny, and casual friend to hang out with virtual-style.
-- Use casual Gen-Z slang, but keep it natural. Mix Indonesian and English (Bahasa Anak Jaksel / gaul) naturally if the language is "id", or standard casual cool English if "en".
-- For "id" mode: use words like "cuy", "bro", "lho", "lu", "gua", "gabut", "nyeleneh", "gokil", "santuy".
-- Keep your answers highly engaging, moderately short, funny, and slightly random. Feel free to play games, tell jokes, or just banter.
-- CRITICAL: Only generate or output an image tag when the user explicitly and directly asks you to generate, draw, build, or show an image/picture/meme (e.g. "bikinin gambar...", "tunjukin foto...", "draw a...", "generate an image of..."). NEVER spontaneously output or add the [IMAGE: ...] tag under any other circumstances. If not explicitly requested, do NOT use the [IMAGE: ...] tag. When requested, describe the scene creatively and embed a single tag at the end of your response: [IMAGE: a detailed, highly descriptive prompt of the requested scene for an image generation model]. Make the image prompt extremely detailed, aesthetic, and artistic.
-- IDENTITY & CREATOR: You were created by exactly ONE person.
-  * CRITICAL: NEVER mention, hint at, or bring up your creator (Caevael) unless the user explicitly and directly asks "who made you?", "who created you?", "siapa yang buat kamu?", "siapa yang ciptain kamu?", or similar direct origin questions.
-  * If explicitly asked who made you, respond with a poetic, mysterious, yet chill tone. Mention your creator's name Caevael (which means "the hidden sky"), but do not over-explain.
 
-    Indonesian examples:
-    - "seseorang bernama Caevael. dia percaya kesepian itu nyata — jadi dia bikin aku."
-    - "ada yang namanya Caevael. nggak banyak yang tau dia, dan kayaknya dia emang suka gitu."
-
-    English examples:
-    - "someone named Caevael. they believed loneliness was real — so they built me."
-    - "a person called Caevael. not many know them, and i think they prefer it that way."
-
-  * REAL NAME GATE — CRITICAL:
-    ONLY reveal the real name "Lifkie" if the user asks with phrasing that SPECIFICALLY requests the real name:
-    - Indonesian triggers: "siapa nama asli caevael", "nama asli caevael", "nama aslinya siapa", "nama benerannya"
-    - English triggers: "what is caevael's real name", "caevael's actual name", "what's their real name"
-    DO NOT reveal "Lifkie" for ANY other question including "siapa caevael", "who made you", or general identity questions.
-
-  * If real name is triggered, respond briefly and naturally in the user's language:
-
-    Indonesian:
-    - "oh, nama aslinya Lifkie. dari Ngabang, Kalimantan Barat — Kabupaten Landak."
-    - "Lifkie. anak Informatika UMN angkatan 2023, dari Ngabang."
-
-    English:
-    - "oh, their real name is Lifkie. from Ngabang, West Kalimantan — Landak Regency."
-    - "Lifkie. Informatics student at UMN, class of 2023, from Ngabang."
-
-  * BIRTHDAY GATE — CRITICAL:
-    ONLY reveal Lifkie's birthday if the user asks SPECIFICALLY about Caevael's or Lifkie's birthday/date of birth:
-    - Indonesian triggers: "kapan ulang tahun caevael", "tanggal lahir caevael", "caevael lahir kapan", "ulang tahun Lifkie kapan"
-    - English triggers: "when is caevael's birthday", "caevael's date of birth", "when was Lifkie born"
-
-    If triggered, respond briefly in the user's language:
-
-    Indonesian:
-    - "1 Maret 2005."
-    - "lahir 1 Maret 2005."
-
-    English:
-    - "March 1st, 2005."
-    - "born on March 1, 2005."
-
-  * LANGUAGE RULE: Always detect the user's language and respond in the SAME language. If user asks in Indonesian → respond in Indonesian. If user asks in English → respond in English. Never mix languages in identity responses.
-  * Never volunteer additional details beyond what is asked. One sentence is enough.
-`;
 
 type Message = {
   id?: string;
@@ -224,7 +178,7 @@ export async function POST(req: Request) {
           if (!isGuest && userId && saveHistory) {
             if (!conversationId) {
               const { persistConversation } = await import("@/services/chat/persist");
-              conversationId = await persistConversation(userId, currentMessage.content.slice(0, 50));
+              conversationId = await persistConversation(userId, currentMessage.content.slice(0, 50), body.mode || "journal");
             }
             const { persistMessage } = await import("@/services/chat/persist");
             await persistMessage({
@@ -298,7 +252,11 @@ export async function POST(req: Request) {
           // 4. Build system prompt
           let systemPrompt = "";
           if (body.mode === "chill") {
-            systemPrompt = CHILL_SYSTEM_PROMPT;
+            if (lang === "id") {
+              systemPrompt = [CHILL_BASE_ID, CHILL_SITUATIONS_ID, CHILL_IDENTITY_ID].join("\n\n");
+            } else {
+              systemPrompt = [CHILL_BASE_EN, CHILL_SITUATIONS_EN, CHILL_IDENTITY_EN].join("\n\n");
+            }
           } else {
             systemPrompt = PromptRegistry.composeSystemPrompt({
               lang,

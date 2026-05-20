@@ -29,11 +29,13 @@ export async function GET(req: Request) {
       let activeConversationId = conversationId;
 
       if (recent) {
+        const mode = searchParams.get("mode") || "journal";
         // Fetch most recent active conversation (not soft deleted)
         const { data: conversation, error: convError } = await supabase
           .from("conversations")
           .select("id, title")
           .eq("user_id", userId)
+          .eq("mode", mode)
           .not("title", "like", "[DELETED]%")
           .order("updated_at", { ascending: false })
           .limit(1);
@@ -68,10 +70,12 @@ export async function GET(req: Request) {
     }
 
     // Case 2: List all conversations (excluding [DELETED])
+    const mode = searchParams.get("mode") || "journal";
     const { data: conversations, error: listError } = await supabase
       .from("conversations")
       .select("id, title, created_at, updated_at")
       .eq("user_id", userId)
+      .eq("mode", mode)
       .not("title", "like", "[DELETED]%")
       .order("updated_at", { ascending: false });
 
@@ -107,5 +111,50 @@ export async function GET(req: Request) {
       { error: "Failed to retrieve conversations" },
       { status: 500 }
     );
+  }
+}
+
+export async function POST(req: Request) {
+  const requestId = Logger.generateRequestId();
+  const userId = await getUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = await req.json();
+    const { messages, mode } = body;
+    
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: "No messages provided" }, { status: 400 });
+    }
+
+    const { persistConversation, persistMessage } = await import("@/services/chat/persist");
+    
+    const firstUserMsg = messages.find((m: any) => m.role === "user");
+    const title = firstUserMsg ? firstUserMsg.content.slice(0, 50) : "New Conversation";
+    
+    const conversationId = await persistConversation(userId, title, mode || "journal");
+    
+    for (const msg of messages) {
+      if (!msg.content) continue;
+      
+      await persistMessage({
+        userId,
+        conversationId,
+        role: msg.role as any,
+        content: msg.content
+      });
+    }
+
+    return NextResponse.json({ conversationId });
+  } catch (error: any) {
+    Logger.error({
+      requestId,
+      userId,
+      action: "POST_CONVERSATION_ERROR",
+      error: error.message,
+    });
+    return NextResponse.json({ error: "Failed to save conversation" }, { status: 500 });
   }
 }

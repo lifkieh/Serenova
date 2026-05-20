@@ -38,7 +38,7 @@ export default function JournalListPage() {
       <div>
         {/* Header */}
         <header className="flex justify-between items-center mb-16 py-4">
-          <Link href="/journal" className="text-zinc-500 hover:text-white transition-colors text-xs flex items-center gap-1.5 select-none">
+          <Link href="/chat/journal" className="text-zinc-500 hover:text-white transition-colors text-xs flex items-center gap-1.5 select-none">
             <ArrowLeft className="w-3.5 h-3.5" />
             Kembali menulis
           </Link>
@@ -58,7 +58,7 @@ export default function JournalListPage() {
               Write some entries to capture your emotional flow. Each entry will sit quietly here.
             </p>
             <Link
-              href="/journal"
+              href="/chat/journal"
               className="mt-2 flex items-center gap-1.5 bg-zinc-900 border border-white/5 hover:border-white/10 text-zinc-400 hover:text-white px-4 py-2 rounded-xl text-xs transition-all"
             >
               <Plus className="w-3.5 h-3.5" />

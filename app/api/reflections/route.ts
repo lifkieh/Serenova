@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { getSupabase } from "@/lib/supabase";
-import { generateWeeklyReflection } from "@/services/reflection/generator";
-import { rateLimit } from "@/lib/rateLimit";
 
 export async function GET() {
     try {
@@ -24,23 +22,24 @@ export async function GET() {
     }
 }
 
-export async function POST() {
-    try {
-        const userId = await getUserId();
-        if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-
-        const { allowed, retryAfter } = rateLimit(`reflections:${userId}`, 3, 3_600_000);
-        if (!allowed) {
-            return NextResponse.json(
-                { error: "Reflection limit reached. Try again later." },
-                { status: 429 }
-            );
-        }
-
-        const reflection = await generateWeeklyReflection(userId);
-        return NextResponse.json({ success: true, data: reflection });
-    } catch (error) {
-        console.error("Reflection generation error:", error);
-        return NextResponse.json({ error: "Server error" }, { status: 500 });
+// Legacy POST kept for backward compat — redirects to new /api/reflections/generate
+export async function POST(req: Request) {
+    const userId = await getUserId();
+    if (!userId) {
+        return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
+
+    // Forward to the new generate endpoint internally
+    const origin = new URL(req.url).origin;
+    const res = await fetch(`${origin}/api/reflections/generate`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Cookie": req.headers.get("cookie") || "",
+        },
+        body: JSON.stringify({ type: "manual", lang: "en" }),
+    });
+
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
 }

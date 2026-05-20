@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, Sparkles, BookOpen, Calendar, ArrowLeft } from "lucide-react";
+import { ChevronDown, ChevronUp, Sparkles, BookOpen, ArrowLeft } from "lucide-react";
+import ReflectionCard from "@/components/reflection/ReflectionCard";
 
 type Reflection = {
     id: string;
@@ -136,56 +137,15 @@ export default function ReflectionsPage() {
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        {filteredReflections.map((r) => {
-                            const isExpanded = !!expandedIds[r.id];
-                            const previewText = r.content.slice(0, 140) + (r.content.length > 140 ? "..." : "");
-
-                            return (
-                                <article
-                                    key={r.id}
-                                    onClick={() => toggleExpand(r.id)}
-                                    className="p-6 rounded-2xl bg-zinc-950/40 border border-white/5 hover:border-white/10 transition-all duration-300 cursor-pointer space-y-4"
-                                >
-                                    {/* Meta Header */}
-                                    <div className="flex justify-between items-center text-xs">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`px-2.5 py-0.5 rounded-md text-[9px] uppercase tracking-wider font-semibold border ${
-                                                r.type === "monthly" 
-                                                    ? "bg-zinc-900 border-zinc-700/40 text-zinc-400" 
-                                                    : "bg-black border-white/5 text-zinc-500"
-                                            }`}>
-                                                {r.type}
-                                            </span>
-                                            <span className="text-[10px] text-zinc-600 flex items-center gap-1">
-                                                <Calendar className="w-3 h-3" />
-                                                {formatPeriod(r.period_start, r.period_end)}
-                                            </span>
-                                        </div>
-                                        <div className="text-zinc-600 group-hover:text-zinc-400 transition-colors">
-                                            {isExpanded ? (
-                                                <ChevronUp className="w-4 h-4" />
-                                            ) : (
-                                                <ChevronDown className="w-4 h-4" />
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Content */}
-                                    <p className={`text-zinc-300 text-sm leading-relaxed font-light transition-all ${
-                                        isExpanded ? "line-clamp-none font-serif leading-loose" : "line-clamp-2"
-                                    }`}>
-                                        {isExpanded ? r.content : previewText}
-                                    </p>
-
-                                    {/* Read more tip */}
-                                    {!isExpanded && r.content.length > 140 && (
-                                        <span className="text-[10px] text-zinc-600 block pt-1 hover:text-zinc-400 transition-colors">
-                                            Read checkpoint →
-                                        </span>
-                                    )}
-                                </article>
-                            );
-                        })}
+                        {filteredReflections.map((r) => (
+                            <ReflectionCard
+                                key={r.id}
+                                reflection={r}
+                                isExpanded={!!expandedIds[r.id]}
+                                onToggle={() => toggleExpand(r.id)}
+                                formatPeriod={formatPeriod}
+                            />
+                        ))}
                     </div>
                 )}
             </div>

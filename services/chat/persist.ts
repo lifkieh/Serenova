@@ -1,12 +1,12 @@
 import { getSupabase } from "@/lib/supabase";
 
-export async function persistConversation(userId: string, title?: string): Promise<string> {
+export async function persistConversation(userId: string, title?: string, mode: string = "journal"): Promise<string> {
     const supabase = getSupabase();
     
     // Create new conversation
     const { data, error } = await supabase
         .from("conversations")
-        .insert([{ user_id: userId, title: title || "New Conversation" }])
+        .insert([{ user_id: userId, title: title || "New Conversation", mode }])
         .select("id")
         .single();
         

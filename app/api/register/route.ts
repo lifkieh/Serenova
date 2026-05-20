@@ -33,8 +33,14 @@ export async function POST(req: Request) {
         }).select().single();
 
         if (error || !user) {
+            let errorMessage = "Registration failed";
+            if (error?.code === "23505") {
+                errorMessage = "Username is already taken";
+            } else if (error?.message) {
+                errorMessage = error.message;
+            }
             return NextResponse.json(
-                { error: error?.message || "Registration failed" },
+                { error: errorMessage },
                 { status: 400 }
             );
         }
@@ -48,6 +54,10 @@ export async function POST(req: Request) {
 
         const response = NextResponse.json({
             success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+            },
         });
 
         response.cookies.set(
